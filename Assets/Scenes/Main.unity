@@ -163,7 +163,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 66df3add3a8307f469778c2c644a5cb2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CoreTest
-  stageData: {fileID: 0}
+  stageData: {fileID: 11400000, guid: ca61f4bfd9cd92f4eabd6cf726d15490, type: 2}
+  testDirection: 1
+  testPosition: {x: 3, y: 3}
+  showDebugPanel: 1
+  panelPosition: {x: 20, y: 20}
+  panelSize: {x: 520, y: 420}
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0
