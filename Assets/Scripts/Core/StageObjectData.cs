@@ -19,6 +19,6 @@ namespace Core
         public GridDirection direction = GridDirection.Up;
 
         [Header("Mirror")]
-        public MirrorShape mirrorShape = MirrorShape.Slash;
+        public MirrorShape mirrorShape = MirrorShape.NormalL;
     }
 }

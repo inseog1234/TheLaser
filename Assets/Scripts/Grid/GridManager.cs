@@ -21,8 +21,6 @@ namespace Grid
 
         [Header("Debug")]
         [SerializeField] private bool drawGizmos = true;
-        [SerializeField] private bool showDebugLog = true;
-
         private readonly Dictionary<Vector2Int, GridCell> cells = new();
         private readonly Dictionary<Vector2Int, GridObject> objects = new();
         private readonly List<GridObject> spawnedObjects = new();
@@ -134,7 +132,7 @@ namespace Grid
             {
                 StageObjectData objectData = stageData.objects[i];
 
-                if (!IsInside(objectData.position) && HasWall(objectData.position) && HasObject(objectData.position))
+                if (!IsInside(objectData.position) || HasWall(objectData.position) || HasObject(objectData.position))
                 {
                     continue;
                 }

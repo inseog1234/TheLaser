@@ -411,6 +411,103 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &983199439
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 983199440}
+  - component: {fileID: 983199443}
+  - component: {fileID: 983199442}
+  - component: {fileID: 983199441}
+  - component: {fileID: 983199444}
+  m_Layer: 0
+  m_Name: Laser
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &983199440
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 983199439}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1619004544}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &983199441
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 983199439}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c8e68e36ab7e9941899a4476df83ac4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Laser.LaserShooter
+  playerGridController: {fileID: 1619004547}
+  inputReader: {fileID: 1619004545}
+  laserSimulator: {fileID: 983199443}
+  laserRenderer: {fileID: 983199442}
+--- !u!114 &983199442
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 983199439}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd07a78fe154b354b89c80c79923eb4b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Laser.LaserRenderer
+  gridManager: {fileID: 1272788211}
+  tilePool: {fileID: 983199444}
+  laserTileParent: {fileID: 983199440}
+  renderBlockedNode: 0
+--- !u!114 &983199443
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 983199439}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da5a7b663293ba94bbe57e08d934f9df, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Laser.LaserSimulator
+  gridManager: {fileID: 1272788211}
+  maxStepCount: 100
+  includeStartTile: 1
+--- !u!114 &983199444
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 983199439}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5411d01714374984db7bd5ee0b53c6d6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Laser.LaserTilePool
+  prefab: {fileID: 5434642654271392561, guid: 88286e4abca4d4a44bd65f12dacef46a, type: 3}
+  poolRoot: {fileID: 983199440}
+  preloadCount: 64
 --- !u!1 &1154981184
 GameObject:
   m_ObjectHideFlags: 0
@@ -587,7 +684,6 @@ MonoBehaviour:
   objectPrefab: {fileID: 6098956190673151614, guid: 2bbe81093817b9d44bcd1124d3b3a9a9, type: 3}
   objectParent: {fileID: 1154981185}
   drawGizmos: 1
-  showDebugLog: 1
 --- !u!1 &1619004542
 GameObject:
   m_ObjectHideFlags: 0
@@ -683,6 +779,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1240852243}
+  - {fileID: 983199440}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1619004545

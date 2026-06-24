@@ -14,7 +14,10 @@ namespace Grid
         [SerializeField] private GridDirection direction = GridDirection.Up;
 
         [Header("Mirror")]
-        [SerializeField] private MirrorShape mirrorShape = MirrorShape.Slash;
+        [SerializeField] private MirrorShape mirrorShape = MirrorShape.NormalL;
+
+        [Header("Visual")]
+        [SerializeField] private Transform visualRoot;
 
         public PuzzleObjectType ObjectType => objectType;
         public ManipulationType ManipulationType => manipulationType;
@@ -24,6 +27,11 @@ namespace Grid
 
         public bool CanPush => manipulationType.CanPush();
         public bool CanRotate => manipulationType.CanRotate();
+
+        private void OnValidate()
+        {
+            RefreshVisual();
+        }
 
         public void Initialize(StageObjectData data, Vector3 worldPosition)
         {
@@ -50,45 +58,107 @@ namespace Grid
             RefreshVisual();
         }
 
-        public void SetMirrorShape(MirrorShape newShape)
-        {
-            mirrorShape = newShape;
-            RefreshVisual();
-        }
-
         public void RotateClockwise()
         {
             direction = direction.RotateClockwise();
-
-            if (objectType == PuzzleObjectType.Mirror)
-            {
-                mirrorShape = mirrorShape.Rotate90();
-            }
-
             RefreshVisual();
         }
 
         public void RotateCounterClockwise()
         {
             direction = direction.RotateCounterClockwise();
+            RefreshVisual();
+        }
 
-            if (objectType == PuzzleObjectType.Mirror)
+        public bool TryReflectLaser(GridDirection laserMoveDirection, out GridDirection reflectedDirection)
+        {
+            reflectedDirection = laserMoveDirection;
+
+            if (objectType != PuzzleObjectType.Mirror)
+                return false;
+
+            GridDirection entrySide = laserMoveDirection.Opposite();
+
+            GetMirrorOpenSides(
+                mirrorShape,
+                direction,
+                out GridDirection sideA,
+                out GridDirection sideB
+            );
+
+            if (entrySide == sideA)
             {
-                mirrorShape = mirrorShape.Rotate90();
+                reflectedDirection = sideB;
+                return true;
             }
 
-            RefreshVisual();
+            if (entrySide == sideB)
+            {
+                reflectedDirection = sideA;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void GetMirrorOpenSides(
+            MirrorShape shape,
+            GridDirection mirrorDirection,
+            out GridDirection sideA,
+            out GridDirection sideB)
+        {
+            if (shape == MirrorShape.NormalL)
+            {
+                sideA = GridDirection.Up;
+                sideB = GridDirection.Right;
+            }
+            else
+            {
+                sideA = GridDirection.Up;
+                sideB = GridDirection.Left;
+            }
+
+            sideA = RotateSideByMirrorDirection(sideA, mirrorDirection);
+            sideB = RotateSideByMirrorDirection(sideB, mirrorDirection);
+        }
+
+        private static GridDirection RotateSideByMirrorDirection(
+            GridDirection side,
+            GridDirection mirrorDirection)
+        {
+            int rotateCount = mirrorDirection switch
+            {
+                GridDirection.Up => 0,
+                GridDirection.Right => 1,
+                GridDirection.Down => 2,
+                GridDirection.Left => 3,
+                _ => 0
+            };
+
+            GridDirection result = side;
+
+            for (int i = 0; i < rotateCount; i++)
+            {
+                result = result.RotateClockwise();
+            }
+
+            return result;
         }
 
         private void RefreshVisual()
         {
-            if (objectType == PuzzleObjectType.Mirror)
+            transform.rotation = Quaternion.Euler(0f, 0f, direction.ToAngleZ());
+
+            if (visualRoot == null)
+                return;
+
+            if (mirrorShape == MirrorShape.NormalL)
             {
-                transform.rotation = Quaternion.Euler(0f, 0f, mirrorShape.VisualZAngle());
+                visualRoot.localRotation = Quaternion.identity;
             }
             else
             {
-                transform.rotation = Quaternion.Euler(0f, 0f, direction.ToAngleZ());
+                visualRoot.localRotation = Quaternion.Euler(0f, 180f, 0f);
             }
         }
     }

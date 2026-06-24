@@ -24,7 +24,7 @@ namespace Core
     public enum MirrorShape
     {
         None,
-        Slash, // 정 방향
-        BackSlash // 역 방향
+        NormalL, // 정 방향
+        ReverseL // 역 방향
     }
 }
