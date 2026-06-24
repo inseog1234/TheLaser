@@ -601,6 +601,7 @@ GameObject:
   - component: {fileID: 1619004545}
   - component: {fileID: 1619004547}
   - component: {fileID: 1619004546}
+  - component: {fileID: 1619004548}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -731,10 +732,24 @@ MonoBehaviour:
   gridManager: {fileID: 1272788211}
   inputReader: {fileID: 1619004545}
   directionView: {fileID: 1619004546}
+  objectInteractor: {fileID: 1619004548}
   smoothMove: 1
   moveDuration: 0.08
   gridPosition: {x: 0, y: 0}
   facingDirection: 1
+--- !u!114 &1619004548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1619004542}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00f8fced8ca6f3f4b9491d38006f4820, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Player.PlayerObjectInteractor
+  gridManager: {fileID: 1272788211}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

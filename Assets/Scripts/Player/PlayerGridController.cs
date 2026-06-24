@@ -11,6 +11,7 @@ namespace Player
         [SerializeField] private GridManager gridManager;
         [SerializeField] private PlayerInputReader inputReader;
         [SerializeField] private PlayerDirectionView directionView;
+        [SerializeField] private PlayerObjectInteractor objectInteractor;
 
         [Header("Move")]
         [SerializeField] private bool smoothMove = true;
@@ -42,7 +43,6 @@ namespace Player
         {
             if (gridManager == null || gridManager.CurrentStageData == null)
             {
-                Debug.LogWarning("[PlayerGridController] GridManager 또는 StageData가 없습니다.");
                 return;
             }
 
@@ -96,12 +96,37 @@ namespace Player
 
             Vector2Int targetPosition = gridPosition + direction.ToVector();
 
-            if (!gridManager.IsWalkable(targetPosition))
+            if (gridManager.IsWalkable(targetPosition))
+            {
+                SetGridPosition(targetPosition);
+                return true;
+            }
+
+            if (gridManager.HasObject(targetPosition))
+            {
+                return TryPushForward(direction);
+            }
+
+            return false;
+        }
+
+        private bool TryPushForward(GridDirection direction)
+        {
+            if (objectInteractor == null)
             {
                 return false;
             }
 
-            SetGridPosition(targetPosition);
+            bool pushed = objectInteractor.TryPushObject(
+                gridPosition,
+                direction,
+                out Vector2Int newPlayerPosition
+            );
+
+            if (!pushed)
+                return false;
+
+            SetGridPosition(newPlayerPosition);
             return true;
         }
 
@@ -173,10 +198,28 @@ namespace Player
 
         private void HandleRotateClockwisePressed()
         {
+            if (isMoving)
+                return;
+
+            if (objectInteractor == null)
+            {
+                return;
+            }
+
+            objectInteractor.TryRotateObject(gridPosition, facingDirection, true);
         }
 
         private void HandleRotateCounterClockwisePressed()
         {
+            if (isMoving)
+                return;
+
+            if (objectInteractor == null)
+            {
+                return;
+            }
+
+            objectInteractor.TryRotateObject(gridPosition, facingDirection, false);
         }
 
         private void HandleResetPressed()
