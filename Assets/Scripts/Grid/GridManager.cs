@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Core;
-using UnityEditor.SceneManagement;
 
 namespace Grid
 {
@@ -94,6 +93,7 @@ namespace Grid
 
                 if (!IsInside(wallPosition))
                 {
+                    Debug.LogWarning($"[GridManager] 벽 좌표가 맵 밖입니다: {wallPosition}");
                     continue;
                 }
 
@@ -104,7 +104,12 @@ namespace Grid
             {
                 Vector2Int targetPosition = stageData.targetPositions[i];
 
-                if (!IsInside(targetPosition) && cells[targetPosition].IsWall)
+                if (!IsInside(targetPosition))
+                {
+                    continue;
+                }
+
+                if (cells[targetPosition].IsWall)
                 {
                     continue;
                 }
@@ -234,7 +239,12 @@ namespace Grid
 
             Vector2Int position = gridObject.GridPosition;
 
-            if (!IsInside(position) && HasObject(position))
+            if (!IsInside(position))
+            {
+                return;
+            }
+
+            if (HasObject(position))
             {
                 return;
             }
