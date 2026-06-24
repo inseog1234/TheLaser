@@ -20,6 +20,13 @@ MonoBehaviour:
   playerStartDirection: 1
   wallPositions:
   - {x: 3, y: 3}
+  - {x: 3, y: 4}
+  - {x: 3, y: 5}
   targetPositions:
-  - {x: 5, y: 8}
-  objects: []
+  - {x: 6, y: 8}
+  objects:
+  - objectType: 1
+    manipulationType: 1
+    position: {x: 4, y: 2}
+    direction: 0
+    mirrorShape: 1
