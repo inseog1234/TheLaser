@@ -11,7 +11,7 @@ namespace Core
     // 뭔 기능의 오브젝트인지
     public enum PuzzleObjectType
     {
-        None, Mirror, Prism
+        None, Wall, Mirror, Prism
     }
 
     // 무슨 상호작용이 가능한지

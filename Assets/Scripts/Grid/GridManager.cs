@@ -19,11 +19,25 @@ namespace Grid
         [SerializeField] private GridObject objectPrefab;
         [SerializeField] private Transform objectParent;
 
+        [Header("Runtime Floor Spawn")]
+        [SerializeField] private GridFloorTile floorTilePrefab;
+        [SerializeField] private Transform floorTileParent;
+
+        [Header("Runtime Target Spawn")]
+        [SerializeField] private GridTarget targetPrefab;
+        [SerializeField] private Transform targetParent;
+
         [Header("Debug")]
         [SerializeField] private bool drawGizmos = true;
+
         private readonly Dictionary<Vector2Int, GridCell> cells = new();
         private readonly Dictionary<Vector2Int, GridObject> objects = new();
+        private readonly Dictionary<Vector2Int, GridTarget> targets = new();
+
         private readonly List<GridObject> spawnedObjects = new();
+        private readonly List<GridObject> spawnedFixedWalls = new();
+        private readonly List<GridFloorTile> spawnedFloorTiles = new();
+        private readonly List<GridTarget> spawnedTargets = new();
 
         public StageData CurrentStageData => stageData;
         public int Width => stageData != null ? stageData.width : 0;
@@ -41,15 +55,16 @@ namespace Grid
         public void LoadStage(StageData targetStageData)
         {
             if (targetStageData == null)
-            {
                 return;
-            }
 
             stageData = targetStageData;
 
             ClearRuntimeGrid();
             CreateCells();
             ApplyStageCells();
+            SpawnFloorTiles();
+            SpawnTargets();
+            SpawnFixedWalls();
             SpawnStageObjects();
         }
 
@@ -57,16 +72,39 @@ namespace Grid
         {
             cells.Clear();
             objects.Clear();
+            targets.Clear();
 
             for (int i = spawnedObjects.Count - 1; i >= 0; i--)
             {
                 if (spawnedObjects[i] != null)
-                {
                     Destroy(spawnedObjects[i].gameObject);
-                }
             }
 
             spawnedObjects.Clear();
+
+            for (int i = spawnedFixedWalls.Count - 1; i >= 0; i--)
+            {
+                if (spawnedFixedWalls[i] != null)
+                    Destroy(spawnedFixedWalls[i].gameObject);
+            }
+
+            spawnedFixedWalls.Clear();
+
+            for (int i = spawnedFloorTiles.Count - 1; i >= 0; i--)
+            {
+                if (spawnedFloorTiles[i] != null)
+                    Destroy(spawnedFloorTiles[i].gameObject);
+            }
+
+            spawnedFloorTiles.Clear();
+
+            for (int i = spawnedTargets.Count - 1; i >= 0; i--)
+            {
+                if (spawnedTargets[i] != null)
+                    Destroy(spawnedTargets[i].gameObject);
+            }
+
+            spawnedTargets.Clear();
         }
 
         private void CreateCells()
@@ -91,7 +129,6 @@ namespace Grid
 
                 if (!IsInside(wallPosition))
                 {
-                    Debug.LogWarning($"[GridManager] 벽 좌표가 맵 밖입니다: {wallPosition}");
                     continue;
                 }
 
@@ -102,12 +139,7 @@ namespace Grid
             {
                 Vector2Int targetPosition = stageData.targetPositions[i];
 
-                if (!IsInside(targetPosition))
-                {
-                    continue;
-                }
-
-                if (cells[targetPosition].IsWall)
+                if (!IsInside(targetPosition) || cells[targetPosition].IsWall)
                 {
                     continue;
                 }
@@ -116,17 +148,122 @@ namespace Grid
             }
         }
 
+        private void SpawnFloorTiles()
+        {
+            if (floorTilePrefab == null)
+                return;
+
+            if (floorTileParent == null)
+                floorTileParent = transform;
+
+            for (int y = 0; y < stageData.height; y++)
+            {
+                for (int x = 0; x < stageData.width; x++)
+                {
+                    Vector2Int gridPosition = new Vector2Int(x, y);
+                    Vector3 worldPosition = GridToWorld(gridPosition);
+
+                    GridFloorTile floorTile = Instantiate(
+                        floorTilePrefab,
+                        worldPosition,
+                        Quaternion.identity,
+                        floorTileParent
+                    );
+
+                    floorTile.name = $"FloorTile_{gridPosition}";
+                    floorTile.Initialize(cellSize, gridPosition);
+
+                    spawnedFloorTiles.Add(floorTile);
+                }
+            }
+        }
+
+        private void SpawnTargets()
+        {
+            if (targetPrefab == null)
+                return;
+
+            if (targetParent == null)
+                targetParent = transform;
+
+            for (int i = 0; i < stageData.targetPositions.Count; i++)
+            {
+                Vector2Int targetPosition = stageData.targetPositions[i];
+
+                if (!IsInside(targetPosition))
+                    continue;
+
+                if (HasWall(targetPosition))
+                {
+                    Debug.LogWarning($"[GridManager] 도착지가 벽과 겹칩니다: {targetPosition}");
+                    continue;
+                }
+
+                if (targets.ContainsKey(targetPosition))
+                {
+                    Debug.LogWarning($"[GridManager] 도착지가 중복 배치되었습니다: {targetPosition}");
+                    continue;
+                }
+
+                Vector3 worldPosition = GridToWorld(targetPosition);
+
+                GridTarget target = Instantiate(
+                    targetPrefab,
+                    worldPosition,
+                    Quaternion.identity,
+                    targetParent
+                );
+
+                target.name = $"Target_{targetPosition}";
+                target.Initialize(targetPosition);
+
+                spawnedTargets.Add(target);
+                targets.Add(targetPosition, target);
+            }
+        }
+
+        private void SpawnFixedWalls()
+        {
+            if (objectPrefab == null)
+                return;
+
+            if (objectParent == null)
+                objectParent = transform;
+
+            for (int i = 0; i < stageData.wallPositions.Count; i++)
+            {
+                Vector2Int wallPosition = stageData.wallPositions[i];
+
+                if (!IsInside(wallPosition))
+                    continue;
+
+                StageObjectData wallData = new StageObjectData
+                {
+                    objectType = PuzzleObjectType.Wall,
+                    manipulationType = ManipulationType.None,
+                    position = wallPosition,
+                    direction = GridDirection.Up,
+                    mirrorShape = MirrorShape.NormalL
+                };
+
+                Vector3 worldPosition = GridToWorld(wallPosition);
+
+                GridObject wallObject = Instantiate(objectPrefab, worldPosition, Quaternion.identity, objectParent);
+
+                wallObject.name = $"FixedWall_{wallPosition}";
+                wallObject.Initialize(wallData, worldPosition);
+
+                spawnedFixedWalls.Add(wallObject);
+            }
+        }
+
         private void SpawnStageObjects()
         {
             if (objectPrefab == null)
-            {
                 return;
-            }
 
             if (objectParent == null)
-            {
                 objectParent = transform;
-            }
 
             for (int i = 0; i < stageData.objects.Count; i++)
             {
@@ -238,14 +375,10 @@ namespace Grid
             Vector2Int position = gridObject.GridPosition;
 
             if (!IsInside(position))
-            {
                 return;
-            }
 
             if (HasObject(position))
-            {
                 return;
-            }
 
             objects.Add(position, gridObject);
 
@@ -315,7 +448,11 @@ namespace Grid
 
         public Vector3 GridToWorld(Vector2Int gridPosition)
         {
-            Vector3 worldPosition = new Vector3(gridPosition.x * cellSize, gridPosition.y * cellSize, 0f);
+            Vector3 worldPosition = new Vector3(
+                gridPosition.x * cellSize,
+                gridPosition.y * cellSize,
+                0f
+            );
 
             if (centerStageOnOrigin && stageData != null)
             {
@@ -338,6 +475,52 @@ namespace Grid
             int y = Mathf.RoundToInt(localPosition.y / cellSize);
 
             return new Vector2Int(x, y);
+        }
+
+        public GridTarget GetTargetAt(Vector2Int position)
+        {
+            if (!targets.TryGetValue(position, out GridTarget target))
+                return null;
+
+            return target;
+        }
+
+        public void SetTargetActivated(Vector2Int position, bool activated)
+        {
+            GridTarget target = GetTargetAt(position);
+
+            if (target == null)
+                return;
+
+            target.SetActivated(activated);
+        }
+
+        public void ResetAllTargets()
+        {
+            for (int i = 0; i < spawnedTargets.Count; i++)
+            {
+                if (spawnedTargets[i] != null)
+                {
+                    spawnedTargets[i].SetActivated(false);
+                }
+            }
+        }
+
+        public bool AreAllTargetsActivated()
+        {
+            if (spawnedTargets.Count <= 0)
+                return false;
+
+            for (int i = 0; i < spawnedTargets.Count; i++)
+            {
+                if (spawnedTargets[i] == null)
+                    continue;
+
+                if (!spawnedTargets[i].IsActivated)
+                    return false;
+            }
+
+            return true;
         }
 
         public IReadOnlyDictionary<Vector2Int, GridCell> GetCells()

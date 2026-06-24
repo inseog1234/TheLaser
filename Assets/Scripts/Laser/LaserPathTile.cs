@@ -7,7 +7,9 @@ namespace Laser
 {
     public enum LaserVisualMatchMode
     {
-        Any, Direction, CornerSides
+        Any,
+        Direction,
+        CornerSides
     }
 
     [Serializable]
@@ -37,7 +39,15 @@ namespace Laser
         [Header("Visual Entries")]
         [SerializeField] private List<LaserVisualEntry> visualEntries = new();
 
+        [Header("Color")]
+        [SerializeField] private Color defaultColor = Color.white;
+
         public void SetNode(LaserPathNode node)
+        {
+            SetNode(node, defaultColor);
+        }
+
+        public void SetNode(LaserPathNode node, Color laserColor)
         {
             DisableAllVisuals();
 
@@ -51,14 +61,28 @@ namespace Laser
             if (entry.autoRotateVisual)
             {
                 float angle = GetRotationAngle(node);
-                entry.visualObject.transform.localRotation =
-                    Quaternion.Euler(entry.rotationOffset + new Vector3(0f, 0f, angle));
+                entry.visualObject.transform.localRotation = Quaternion.Euler(entry.rotationOffset + new Vector3(0f, 0f, angle));
             }
+
+            ApplyColor(entry.visualObject, laserColor);
         }
 
         public void ResetTile()
         {
             DisableAllVisuals();
+        }
+
+        private void ApplyColor(GameObject targetObject, Color color)
+        {
+            if (targetObject == null)
+                return;
+
+            SpriteRenderer[] renderers = targetObject.GetComponentsInChildren<SpriteRenderer>(true);
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                renderers[i].color = color;
+            }
         }
 
         private LaserVisualEntry FindBestVisual(LaserPathNode node)
@@ -99,7 +123,7 @@ namespace Laser
                     return entry.directions.Contains(mainDirection);
 
                 case LaserVisualMatchMode.CornerSides:
-                    if (node.NodeType != LaserPathNodeType.Corner)
+                    if (node.NodeType != LaserPathNodeType.Corner && node.NodeType != LaserPathNodeType.CornerEnd)
                         return false;
 
                     if (!node.HasIncomingDirection || !node.HasOutgoingDirection)
@@ -134,15 +158,14 @@ namespace Laser
                     continue;
 
                 if (visualEntries[i].visualObject != null)
-                {
                     visualEntries[i].visualObject.SetActive(false);
-                }
             }
         }
 
         private float GetRotationAngle(LaserPathNode node)
         {
-            if (node.NodeType == LaserPathNodeType.Corner &&
+            if ((node.NodeType == LaserPathNodeType.Corner ||
+                node.NodeType == LaserPathNodeType.CornerEnd) &&
                 node.HasIncomingDirection &&
                 node.HasOutgoingDirection)
             {

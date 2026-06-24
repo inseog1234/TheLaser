@@ -11,6 +11,10 @@ namespace Laser
         [SerializeField] private LaserTilePool tilePool;
         [SerializeField] private Transform laserTileParent;
 
+        [Header("Color")]
+        [SerializeField] private Color normalLaserColor = new Color(0.2f, 0.85f, 1f, 1f);
+        [SerializeField] private Color reachedTargetLaserColor = new Color(0.3f, 1f, 0.35f, 1f);
+
         [Header("Option")]
         [SerializeField] private bool renderBlockedNode = false;
 
@@ -31,6 +35,8 @@ namespace Laser
             if (result == null || tilePool == null || gridManager == null)
                 return;
 
+            Color laserColor = result.ReachedTarget ? reachedTargetLaserColor : normalLaserColor;
+
             for (int i = 0; i < result.PathNodes.Count; i++)
             {
                 LaserPathNode node = result.PathNodes[i];
@@ -44,7 +50,7 @@ namespace Laser
                 tile.transform.rotation = Quaternion.identity;
                 tile.name = $"LaserTile_{node.NodeType}_{node.Position}";
 
-                tile.SetNode(node);
+                tile.SetNode(node, laserColor);
 
                 activeTiles.Add(tile);
             }

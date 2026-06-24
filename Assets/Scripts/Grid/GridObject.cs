@@ -1,8 +1,30 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Core;
 
 namespace Grid
 {
+    [Serializable]
+    public class GridObjectVisualEntry
+    {
+        [Header("Target")]
+        public GameObject visualObject;
+
+        [Header("Object Condition")]
+        public PuzzleObjectType objectType;
+
+        [Header("Manipulation Filter")]
+        public bool useManipulationFilter;
+        public ManipulationType manipulationType;
+
+        [Header("Mirror Shape Filter")]
+        public bool useMirrorShapeFilter;
+        public MirrorShape mirrorShape;
+
+        public Vector3 localRotationOffset;
+    }
+
     public class GridObject : MonoBehaviour
     {
         [Header("Object Info")]
@@ -16,8 +38,8 @@ namespace Grid
         [Header("Mirror")]
         [SerializeField] private MirrorShape mirrorShape = MirrorShape.NormalL;
 
-        [Header("Visual")]
-        [SerializeField] private Transform visualRoot;
+        [Header("Visual Entries")]
+        [SerializeField] private List<GridObjectVisualEntry> visualEntries = new();
 
         public PuzzleObjectType ObjectType => objectType;
         public ManipulationType ManipulationType => manipulationType;
@@ -60,12 +82,18 @@ namespace Grid
 
         public void RotateClockwise()
         {
+            if (!CanRotate)
+                return;
+
             direction = direction.RotateClockwise();
             RefreshVisual();
         }
 
         public void RotateCounterClockwise()
         {
+            if (!CanRotate)
+                return;
+
             direction = direction.RotateCounterClockwise();
             RefreshVisual();
         }
@@ -79,12 +107,7 @@ namespace Grid
 
             GridDirection entrySide = laserMoveDirection.Opposite();
 
-            GetMirrorOpenSides(
-                mirrorShape,
-                direction,
-                out GridDirection sideA,
-                out GridDirection sideB
-            );
+            GetMirrorOpenSides(mirrorShape, direction, out GridDirection sideA, out GridDirection sideB);
 
             if (entrySide == sideA)
             {
@@ -147,18 +170,90 @@ namespace Grid
 
         private void RefreshVisual()
         {
-            transform.rotation = Quaternion.Euler(0f, 0f, direction.ToAngleZ());
+            ApplyRootRotation();
 
-            if (visualRoot == null)
+            DisableAllVisuals();
+
+            GridObjectVisualEntry entry = FindBestVisualEntry();
+
+            if (entry == null || entry.visualObject == null)
                 return;
 
-            if (mirrorShape == MirrorShape.NormalL)
+            entry.visualObject.SetActive(true);
+
+            Transform visualTransform = entry.visualObject.transform;
+
+            Vector3 localEuler = entry.localRotationOffset;
+
+            if (objectType == PuzzleObjectType.Mirror && mirrorShape == MirrorShape.ReverseL && !entry.useMirrorShapeFilter)
             {
-                visualRoot.localRotation = Quaternion.identity;
+                localEuler.y += 180f;
             }
-            else
+
+            visualTransform.localRotation = Quaternion.Euler(localEuler);
+        }
+
+        private void ApplyRootRotation()
+        {
+            if (objectType == PuzzleObjectType.Mirror || objectType == PuzzleObjectType.Prism)
             {
-                visualRoot.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                transform.rotation = Quaternion.Euler(0f, 0f, direction.ToAngleZ());
+                return;
+            }
+
+            transform.rotation = Quaternion.identity;
+        }
+
+        private GridObjectVisualEntry FindBestVisualEntry()
+        {
+            GridObjectVisualEntry fallback = null;
+            int bestScore = -1;
+
+            for (int i = 0; i < visualEntries.Count; i++)
+            {
+                GridObjectVisualEntry entry = visualEntries[i];
+
+                if (entry == null || entry.visualObject == null)
+                    continue;
+
+                if (entry.objectType != objectType)
+                    continue;
+
+                if (entry.useManipulationFilter &&
+                    entry.manipulationType != manipulationType)
+                    continue;
+
+                if (entry.useMirrorShapeFilter &&
+                    entry.mirrorShape != mirrorShape)
+                    continue;
+
+                int score = 0;
+
+                if (entry.useManipulationFilter)
+                    score += 10;
+
+                if (entry.useMirrorShapeFilter)
+                    score += 10;
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    fallback = entry;
+                }
+            }
+
+            return fallback;
+        }
+
+        private void DisableAllVisuals()
+        {
+            for (int i = 0; i < visualEntries.Count; i++)
+            {
+                if (visualEntries[i] == null)
+                    continue;
+
+                if (visualEntries[i].visualObject != null)
+                    visualEntries[i].visualObject.SetActive(false);
             }
         }
     }

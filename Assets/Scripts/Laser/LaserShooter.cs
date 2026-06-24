@@ -1,6 +1,7 @@
 using UnityEngine;
 using Core;
 using Player;
+using Grid;
 
 namespace Laser
 {
@@ -11,6 +12,7 @@ namespace Laser
         [SerializeField] private PlayerInputReader inputReader;
         [SerializeField] private LaserSimulator laserSimulator;
         [SerializeField] private LaserRenderer laserRenderer;
+        [SerializeField] private GridManager gridManager;
 
         private void OnEnable()
         {
@@ -51,11 +53,28 @@ namespace Laser
 
         public void Shoot(Vector2Int startPosition, GridDirection startDirection)
         {
+            if (laserRenderer != null)
+            {
+                laserRenderer.Clear();
+            }
+
+            if (gridManager != null)
+            {
+                gridManager.ResetAllTargets();
+            }
+
             LaserResult result = laserSimulator.Simulate(startPosition, startDirection);
 
             if (laserRenderer != null)
             {
                 laserRenderer.Render(result);
+            }
+
+            if (gridManager != null &&
+                result.ReachedTarget &&
+                result.TargetPosition.HasValue)
+            {
+                gridManager.SetTargetActivated(result.TargetPosition.Value, true);
             }
 
             if (result.ReachedTarget)
