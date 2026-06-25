@@ -453,7 +453,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.6, y: 1.6, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1619004544}
@@ -490,8 +490,9 @@ MonoBehaviour:
   gridManager: {fileID: 1272788211}
   tilePool: {fileID: 983199444}
   laserTileParent: {fileID: 983199440}
-  normalLaserColor: {r: 0.2, g: 0.85, b: 1, a: 1}
+  overrideAllLaserColorWhenAnyTargetReached: 1
   reachedTargetLaserColor: {r: 0.039215688, g: 0.82745105, b: 0.10980393, a: 1}
+  colorPalette: []
   renderBlockedNode: 0
 --- !u!114 &983199443
 MonoBehaviour:
@@ -506,7 +507,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Laser.LaserSimulator
   gridManager: {fileID: 1272788211}
-  maxStepCount: 100
+  maxStepCountPerBeam: 100
+  maxTotalBeamCount: 64
+  useDistanceLimit: 1
+  defaultMaxDistance: 8
+  defaultColor: 1
 --- !u!114 &983199444
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -552,6 +557,37 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1272788210}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1229671994
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1229671995}
+  m_Layer: 0
+  m_Name: DistanceSensors
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1229671995
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1229671994}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1349611832}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1240852242
 GameObject:
@@ -693,7 +729,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1d3c206d5bd8e154dab25a3b7688dfd9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Grid.GridObject
-  stageData: {fileID: 11400000, guid: ca61f4bfd9cd92f4eabd6cf726d15490, type: 2}
+  stageData: {fileID: 11400000, guid: adc2203693fb16843a57c3e11e91102d, type: 2}
   loadOnAwake: 1
   cellSize: 1
   originWorldPosition: {x: 0, y: 0, z: 0}
@@ -704,6 +740,10 @@ MonoBehaviour:
   floorTileParent: {fileID: 692392923}
   targetPrefab: {fileID: 6059034244741162038, guid: 6d634f541b4493c479d415be35d7c0a8, type: 3}
   targetParent: {fileID: 207505315}
+  distanceSensorPrefab: {fileID: 4102026491533251846, guid: 28d2419312cb41e4284c46e9f2d4d60a, type: 3}
+  distanceSensorParent: {fileID: 1229671995}
+  transformZonePrefab: {fileID: 9202449482161502949, guid: 5634fb372474e1b4b9033dbe46141371, type: 3}
+  transformZoneParent: {fileID: 2092070370}
   drawGizmos: 1
 --- !u!1 &1349611831
 GameObject:
@@ -737,6 +777,8 @@ Transform:
   - {fileID: 692392923}
   - {fileID: 2079740934}
   - {fileID: 207505315}
+  - {fileID: 1229671995}
+  - {fileID: 2092070370}
   m_Father: {fileID: 1272788210}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1617707376
@@ -1109,6 +1151,37 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2079740933}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1349611832}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2092070369
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2092070370}
+  m_Layer: 0
+  m_Name: TransformZones
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2092070370
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2092070369}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}

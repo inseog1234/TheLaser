@@ -7,48 +7,170 @@ namespace Laser
 {
     public class LaserSimulator : MonoBehaviour
     {
+        private class LaserBeam
+        {
+            public int BeamId;
+            public Vector2Int Position;
+            public LaserDirection Direction;
+            public LaserColorKind Color;
+            public int RemainingDistance;
+
+            public LaserBeam(int beamId, Vector2Int position, LaserDirection direction, LaserColorKind color, int remainingDistance)
+            {
+                BeamId = beamId;
+                Position = position;
+                Direction = direction;
+                Color = color;
+                RemainingDistance = remainingDistance;
+            }
+        }
+
         [Header("References")]
         [SerializeField] private GridManager gridManager;
 
-        [Header("Option")]
-        [SerializeField] private int maxStepCount = 100;
+        [Header("Step Limit")]
+        [SerializeField] private int maxStepCountPerBeam = 100;
+        [SerializeField] private int maxTotalBeamCount = 64;
+
+        [Header("Distance Limit")]
+        [SerializeField] private bool useDistanceLimit;
+        [SerializeField] private int defaultMaxDistance = 20;
+
+        [Header("Default State")]
+        [SerializeField] private LaserColorKind defaultColor = LaserColorKind.Default;
+
+        private readonly List<LaserDirection> splitterOutputs = new();
+
+        private void Awake()
+        {
+            if (gridManager == null)
+                gridManager = FindFirstObjectByType<GridManager>();
+        }
 
         public LaserResult Simulate(Vector2Int startPosition, GridDirection startDirection)
+        {
+            return Simulate(startPosition, LaserDirectionExtensions.FromGridDirection(startDirection));
+        }
+
+        public LaserResult Simulate(Vector2Int startPosition, LaserDirection startDirection)
         {
             LaserResult result = new LaserResult();
 
             if (gridManager == null)
-            {
-                Debug.LogWarning("[LaserSimulator] GridManager가 없습니다.");
                 return result;
+
+            Queue<LaserBeam> beamQueue = new();
+            HashSet<LaserBeamState> visitedStates = new();
+
+            int nextBeamId = 0;
+            int remainingDistance = useDistanceLimit ? defaultMaxDistance : -1;
+
+            beamQueue.Enqueue(new LaserBeam(nextBeamId++, startPosition, startDirection, defaultColor, remainingDistance));
+
+            while (beamQueue.Count > 0)
+            {
+                if (nextBeamId > maxTotalBeamCount)
+                    break;
+
+                LaserBeam beam = beamQueue.Dequeue();
+                SimulateBeam(result, beam, beamQueue, visitedStates, ref nextBeamId);
             }
 
-            HashSet<LaserState> visitedStates = new();
+            return result;
+        }
 
-            Vector2Int currentPosition = startPosition;
-            GridDirection currentDirection = startDirection;
+        private bool TryDetectAdjacentTargetOnLaserEnd(LaserResult result, Vector2Int endPosition, LaserDirection endDirection, LaserColorKind color, int beamId)
+        {
+            Vector2Int forwardPosition = endPosition + endDirection.ToVector();
 
-            visitedStates.Add(new LaserState(currentPosition, currentDirection));
+            if (TryReachTargetFromLaserEnd(result, endPosition, forwardPosition, endDirection, color, beamId))
+                return true;
 
-            result.AddNode(LaserPathNode.Start(startPosition, startDirection));
+            Vector2Int upPosition = endPosition + Vector2Int.up;
+            Vector2Int rightPosition = endPosition + Vector2Int.right;
+            Vector2Int downPosition = endPosition + Vector2Int.down;
+            Vector2Int leftPosition = endPosition + Vector2Int.left;
 
-            for (int step = 0; step < maxStepCount; step++)
+            if (TryReachTargetFromLaserEnd(result, endPosition, upPosition, LaserDirection.Up, color, beamId))
+                return true;
+
+            if (TryReachTargetFromLaserEnd(result, endPosition, rightPosition, LaserDirection.Right, color, beamId))
+                return true;
+
+            if (TryReachTargetFromLaserEnd(result, endPosition, downPosition, LaserDirection.Down, color, beamId))
+                return true;
+
+            if (TryReachTargetFromLaserEnd(result, endPosition, leftPosition, LaserDirection.Left, color, beamId))
+                return true;
+
+            return false;
+        }
+
+        private bool TryReachTargetFromLaserEnd(LaserResult result, Vector2Int endPosition, Vector2Int targetPosition, LaserDirection incomingDirection, LaserColorKind color, int beamId)
+        {
+            if (!gridManager.IsInside(targetPosition))
+                return false;
+
+            if (!gridManager.HasTarget(targetPosition))
+                return false;
+
+            result.AddNode(LaserPathNode.Target(targetPosition, incomingDirection, color, beamId));
+            result.AddTargetHit(new LaserTargetHit(targetPosition, color, beamId, result.TargetHits.Count));
+
+            AddEndNode(result, endPosition, incomingDirection, color, beamId);
+            result.SetReachedTarget(targetPosition);
+
+            return true;
+        }
+
+        private void SimulateBeam(
+            LaserResult result,
+            LaserBeam beam,
+            Queue<LaserBeam> beamQueue,
+            HashSet<LaserBeamState> visitedStates,
+            ref int nextBeamId)
+        {
+            Vector2Int currentPosition = beam.Position;
+            LaserDirection currentDirection = beam.Direction;
+            LaserColorKind currentColor = beam.Color;
+            int remainingDistance = beam.RemainingDistance;
+
+            result.AddNode(LaserPathNode.Start(currentPosition, currentDirection, currentColor, beam.BeamId));
+
+            visitedStates.Add(new LaserBeamState(currentPosition, currentDirection, currentColor));
+
+            for (int step = 0; step < maxStepCountPerBeam; step++)
             {
+                if (useDistanceLimit && remainingDistance <= 0)
+                {
+                    if (TryDetectAdjacentTargetOnLaserEnd(result, currentPosition, currentDirection, currentColor, beam.BeamId))
+                        break;
+
+                    AddEndNode(result, currentPosition, currentDirection, currentColor, beam.BeamId);
+                    result.SetDistanceEnded(currentPosition);
+                    break;
+                }
+
                 Vector2Int nextPosition = currentPosition + currentDirection.ToVector();
 
                 if (!gridManager.IsInside(nextPosition))
                 {
-                    AddEndNode(result, currentPosition, currentDirection);
+                    AddEndNode(result, currentPosition, currentDirection, currentColor, beam.BeamId);
                     result.SetHitWall(nextPosition);
                     break;
                 }
 
-                LaserState nextState = new LaserState(nextPosition, currentDirection);
+                AddSegment(result, currentPosition, nextPosition, currentColor, beam.BeamId);
+
+                if (useDistanceLimit)
+                    remainingDistance--;
+
+                LaserBeamState nextState = new LaserBeamState(nextPosition, currentDirection, currentColor);
 
                 if (visitedStates.Contains(nextState))
                 {
-                    result.AddNode(LaserPathNode.Loop(nextPosition, currentDirection));
-                    AddEndNode(result, currentPosition, currentDirection);
+                    result.AddNode(LaserPathNode.Loop(nextPosition, currentDirection, currentColor, beam.BeamId));
+                    AddEndNode(result, currentPosition, currentDirection, currentColor, beam.BeamId);
                     result.SetLoopDetected(nextPosition);
                     break;
                 }
@@ -57,65 +179,182 @@ namespace Laser
 
                 if (gridManager.HasWall(nextPosition))
                 {
-                    result.AddNode(LaserPathNode.Blocked(nextPosition, currentDirection));
-                    AddEndNode(result, currentPosition, currentDirection);
+                    result.AddNode(LaserPathNode.Blocked(nextPosition, currentDirection, currentColor, beam.BeamId));
+                    AddEndNode(result, currentPosition, currentDirection, currentColor, beam.BeamId);
                     result.SetHitWall(nextPosition);
                     break;
                 }
 
                 if (gridManager.HasTarget(nextPosition))
                 {
-                    result.AddNode(LaserPathNode.Target(nextPosition, currentDirection));
-                    AddEndNode(result, currentPosition, currentDirection);
-                    result.SetReachedTarget(nextPosition);
-                    break;
+                    result.AddNode(LaserPathNode.Target(nextPosition, currentDirection, currentColor, beam.BeamId));
+                    result.AddTargetHit(new LaserTargetHit(nextPosition, currentColor, beam.BeamId, result.TargetHits.Count));
+
+                    GridTarget target = gridManager.GetTargetAt(nextPosition);
+                    bool stopLaserOnHit = target == null || target.StopLaserOnHit;
+
+                    if (stopLaserOnHit)
+                    {
+                        AddEndNode(result, currentPosition, currentDirection, currentColor, beam.BeamId);
+                        result.SetReachedTarget(nextPosition);
+                        break;
+                    }
+
+                    currentPosition = nextPosition;
+                    continue;
                 }
 
                 GridObject gridObject = gridManager.GetObjectAt(nextPosition);
 
                 if (gridObject != null)
                 {
-                    if (gridObject.TryReflectLaser(currentDirection, out GridDirection reflectedDirection))
-                    {
-                        result.AddNode(LaserPathNode.Corner(nextPosition, currentDirection, reflectedDirection));
+                    bool stopped = HandleObject(
+                        result,
+                        gridObject,
+                        beamQueue,
+                        ref nextBeamId,
+                        beam.BeamId,
+                        currentPosition,
+                        nextPosition,
+                        ref currentDirection,
+                        ref currentColor,
+                        ref remainingDistance
+                    );
 
-                        currentPosition = nextPosition;
-                        currentDirection = reflectedDirection;
-                        continue;
-                    }
+                    if (stopped)
+                        break;
 
-                    result.AddNode(LaserPathNode.Blocked(nextPosition, currentDirection));
-                    AddEndNode(result, currentPosition, currentDirection);
-                    result.SetHitObjectAndStopped(nextPosition);
-                    break;
+                    currentPosition = nextPosition;
+                    continue;
                 }
 
-                result.AddNode(LaserPathNode.Straight(nextPosition, currentDirection));
-
+                result.AddNode(LaserPathNode.Straight(nextPosition, currentDirection, currentColor, beam.BeamId));
                 currentPosition = nextPosition;
             }
-
-            if (!result.ReachedTarget &&
-                !result.HitWall &&
-                !result.HitObjectAndStopped &&
-                !result.LoopDetected)
-            {
-                AddEndNode(result, currentPosition, currentDirection);
-                result.SetLoopDetected(currentPosition);
-
-                Debug.LogWarning("[LaserSimulator] 최대 레이저 계산 횟수를 초과했습니다.");
-            }
-
-            return result;
         }
 
-        private void AddEndNode(LaserResult result, Vector2Int position, GridDirection incomingDirection)
+        private bool HandleObject(
+            LaserResult result,
+            GridObject gridObject,
+            Queue<LaserBeam> beamQueue,
+            ref int nextBeamId,
+            int currentBeamId,
+            Vector2Int currentPosition,
+            Vector2Int objectPosition,
+            ref LaserDirection currentDirection,
+            ref LaserColorKind currentColor,
+            ref int remainingDistance)
         {
-            int index = FindLastNodeIndexAtPosition(result, position);
+            switch (gridObject.ObjectType)
+            {
+                case PuzzleObjectType.Mirror:
+                    if (gridObject.TryReflectLaser(currentDirection, out LaserDirection reflectedDirection))
+                    {
+                        result.AddNode(LaserPathNode.Corner(objectPosition, currentDirection, reflectedDirection, currentColor, currentBeamId));
+                        currentDirection = reflectedDirection;
+                        return false;
+                    }
+
+                    result.AddNode(LaserPathNode.Blocked(objectPosition, currentDirection, currentColor, currentBeamId));
+                    AddEndNode(result, currentPosition, currentDirection, currentColor, currentBeamId);
+                    result.SetHitObjectAndStopped(objectPosition);
+                    return true;
+
+                case PuzzleObjectType.Prism:
+                    return HandlePrism(result, gridObject, beamQueue, ref nextBeamId, currentBeamId, currentPosition, objectPosition, ref currentDirection, ref currentColor, remainingDistance);
+
+                case PuzzleObjectType.Lens:
+                    if (gridObject.LensType == LensType.DistanceAmplifier && remainingDistance >= 0)
+                        remainingDistance += gridObject.DistanceBoost;
+
+                    result.AddNode(LaserPathNode.Straight(objectPosition, currentDirection, currentColor, currentBeamId));
+                    return false;
+
+                default:
+                    result.AddNode(LaserPathNode.Blocked(objectPosition, currentDirection, currentColor, currentBeamId));
+                    AddEndNode(result, currentPosition, currentDirection, currentColor, currentBeamId);
+                    result.SetHitObjectAndStopped(objectPosition);
+                    return true;
+            }
+        }
+
+        private bool HandlePrism(
+            LaserResult result,
+            GridObject prism,
+            Queue<LaserBeam> beamQueue,
+            ref int nextBeamId,
+            int currentBeamId,
+            Vector2Int currentPosition,
+            Vector2Int prismPosition,
+            ref LaserDirection currentDirection,
+            ref LaserColorKind currentColor,
+            int remainingDistance)
+        {
+            if (prism.PrismType == PrismType.Splitter)
+            {
+                prism.GetSplitterOutputDirections(currentDirection, splitterOutputs);
+
+                if (splitterOutputs.Count <= 0)
+                {
+                    result.AddNode(LaserPathNode.Blocked(prismPosition, currentDirection, currentColor, currentBeamId));
+                    AddEndNode(result, currentPosition, currentDirection, currentColor, currentBeamId);
+                    result.SetHitObjectAndStopped(prismPosition);
+                    return true;
+                }
+
+                result.AddNode(LaserPathNode.Splitter(prismPosition, currentDirection, splitterOutputs[0], currentColor, currentBeamId));
+
+                for (int i = 0; i < splitterOutputs.Count; i++)
+                {
+                    if (nextBeamId >= maxTotalBeamCount)
+                        break;
+
+                    int beamId = nextBeamId++;
+                    beamQueue.Enqueue(new LaserBeam(beamId, prismPosition, splitterOutputs[i], currentColor, remainingDistance));
+                }
+
+                // 현재 빔은 여기서 종료되고, 분기 큐의 빔들이 이어서 진행한다.
+                return true;
+            }
+
+            if (prism.PrismType == PrismType.Color)
+            {
+                currentColor = prism.ApplyColorPrism(currentColor);
+                result.AddNode(LaserPathNode.Straight(prismPosition, currentDirection, currentColor, currentBeamId));
+                return false;
+            }
+
+            if (prism.PrismType == PrismType.Refraction)
+            {
+                LaserDirection refracted = prism.ApplyRefractionPrism(currentDirection);
+                result.AddNode(LaserPathNode.Corner(prismPosition, currentDirection, refracted, currentColor, currentBeamId));
+                currentDirection = refracted;
+                return false;
+            }
+
+            result.AddNode(LaserPathNode.Blocked(prismPosition, currentDirection, currentColor, currentBeamId));
+            AddEndNode(result, currentPosition, currentDirection, currentColor, currentBeamId);
+            result.SetHitObjectAndStopped(prismPosition);
+            return true;
+        }
+
+        private void AddSegment(LaserResult result, Vector2Int start, Vector2Int end, LaserColorKind color, int beamId)
+        {
+            result.AddSegment(new LaserSegment(
+                new Vector2(start.x, start.y),
+                new Vector2(end.x, end.y),
+                color,
+                beamId
+            ));
+        }
+
+        private void AddEndNode(LaserResult result, Vector2Int position, LaserDirection incomingDirection, LaserColorKind color, int beamId)
+        {
+            int index = FindLastNodeIndexAtPosition(result, position, beamId);
 
             if (index < 0)
             {
-                result.AddNode(LaserPathNode.End(position, incomingDirection));
+                result.AddNode(LaserPathNode.End(position, incomingDirection, color, beamId));
                 return;
             }
 
@@ -126,17 +365,22 @@ namespace Laser
                 result.PathNodes[index] = LaserPathNode.CornerEnd(
                     lastNodeAtPosition.Position,
                     lastNodeAtPosition.IncomingDirection,
-                    lastNodeAtPosition.OutgoingDirection
+                    lastNodeAtPosition.OutgoingDirection,
+                    lastNodeAtPosition.Color,
+                    lastNodeAtPosition.BeamId
                 );
 
                 return;
             }
 
-            if (lastNodeAtPosition.NodeType == LaserPathNodeType.Straight)
+            if (lastNodeAtPosition.NodeType == LaserPathNodeType.Straight ||
+                lastNodeAtPosition.NodeType == LaserPathNodeType.Start)
             {
                 result.PathNodes[index] = LaserPathNode.End(
                     lastNodeAtPosition.Position,
-                    lastNodeAtPosition.IncomingDirection
+                    incomingDirection,
+                    color,
+                    beamId
                 );
 
                 return;
@@ -148,14 +392,16 @@ namespace Laser
                 return;
             }
 
-            result.AddNode(LaserPathNode.End(position, incomingDirection));
+            result.AddNode(LaserPathNode.End(position, incomingDirection, color, beamId));
         }
 
-        private int FindLastNodeIndexAtPosition(LaserResult result, Vector2Int position)
+        private int FindLastNodeIndexAtPosition(LaserResult result, Vector2Int position, int beamId)
         {
             for (int i = result.PathNodes.Count - 1; i >= 0; i--)
             {
-                if (result.PathNodes[i].Position == position)
+                LaserPathNode node = result.PathNodes[i];
+
+                if (node.Position == position && node.BeamId == beamId)
                     return i;
             }
 

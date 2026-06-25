@@ -21,7 +21,17 @@ namespace Core
 
         [Header("Cells")]
         public List<Vector2Int> wallPositions = new();
-        public List<Vector2Int> targetPositions = new();
+        public List<Vector2Int> targetPositions = new(); // 기존 일반 도착지 호환용
+
+        [Header("Advanced Targets")]
+        public List<StageTargetData> advancedTargets = new();
+        public List<int> sequenceLockPattern = new();
+
+        [Header("Distance Sensors")]
+        public List<DistanceSensorData> distanceSensors = new();
+
+        [Header("Transform Zones")]
+        public List<TransformZoneData> transformZones = new();
 
         [Header("Puzzle Objects")]
         public List<StageObjectData> objects = new();
@@ -38,14 +48,23 @@ namespace Core
 
         public bool HasTarget(Vector2Int position)
         {
-            return targetPositions.Contains(position);
+            if (targetPositions.Contains(position))
+                return true;
+
+            for (int i = 0; i < advancedTargets.Count; i++)
+            {
+                if (advancedTargets[i] != null && advancedTargets[i].position == position)
+                    return true;
+            }
+
+            return false;
         }
 
         public bool HasObject(Vector2Int position)
         {
             for (int i = 0; i < objects.Count; i++)
             {
-                if (objects[i].position == position)
+                if (objects[i] != null && objects[i].position == position)
                     return true;
             }
 
@@ -56,7 +75,7 @@ namespace Core
         {
             for (int i = 0; i < objects.Count; i++)
             {
-                if (objects[i].position == position)
+                if (objects[i] != null && objects[i].position == position)
                     return objects[i];
             }
 

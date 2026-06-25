@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 11f1cafd2a1febf40be5ad4846ab56eb, type: 3}
+  m_Name: TestStage_02_ColorPrism
+  m_EditorClassIdentifier: Assembly-CSharp::Core.StageData
+  stageNumber: 2
+  stageName: Test 02 - Color Prism Red Target
+  width: 10
+  height: 7
+  playerStartPosition: {x: 0, y: 3}
+  playerStartDirection: 1
+  wallPositions: []
+  targetPositions: []
+  advancedTargets:
+  - targetId: Red_Target
+    targetType: 1
+    position: {x: 8, y: 3}
+    requiredColor: 2
+    sequenceValue: 1
+    detectionRadius: 0.25
+    requireDifferentColors: 0
+    stopLaserOnHit: 1
+  sequenceLockPattern: 
+  distanceSensors: []
+  transformZones: []
+  objects:
+  - objectType: 3
+    manipulationType: 0
+    position: {x: 3, y: 3}
+    direction: 0
+    mirrorShape: 1
+    prismType: 1
+    splitterMode: 2
+    prismColor: 1
+    refractionMode: 0
+    lensType: 0
+    distanceBoost: 5

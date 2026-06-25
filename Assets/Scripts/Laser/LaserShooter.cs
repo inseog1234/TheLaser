@@ -14,13 +14,30 @@ namespace Laser
         [SerializeField] private LaserRenderer laserRenderer;
         [SerializeField] private GridManager gridManager;
 
+        private void Awake()
+        {
+            if (playerGridController == null)
+                playerGridController = FindFirstObjectByType<PlayerGridController>();
+
+            if (inputReader == null)
+                inputReader = FindFirstObjectByType<PlayerInputReader>();
+
+            if (laserSimulator == null)
+                laserSimulator = FindFirstObjectByType<LaserSimulator>();
+
+            if (laserRenderer == null)
+                laserRenderer = FindFirstObjectByType<LaserRenderer>();
+
+            if (gridManager == null)
+                gridManager = FindFirstObjectByType<GridManager>();
+        }
+
         private void OnEnable()
         {
             if (inputReader == null)
                 return;
 
             inputReader.LaserPressed += ShootFromPlayer;
-
             inputReader.MovePressed += ClearLaserOnMove;
             inputReader.RotateClockwisePressed += ClearLaser;
             inputReader.RotateCounterClockwisePressed += ClearLaser;
@@ -33,7 +50,6 @@ namespace Laser
                 return;
 
             inputReader.LaserPressed -= ShootFromPlayer;
-
             inputReader.MovePressed -= ClearLaserOnMove;
             inputReader.RotateClockwisePressed -= ClearLaser;
             inputReader.RotateCounterClockwisePressed -= ClearLaser;
@@ -45,50 +61,28 @@ namespace Laser
             if (playerGridController == null || laserSimulator == null)
                 return;
 
-            Shoot(
-                playerGridController.GridPosition,
-                playerGridController.FacingDirection
-            );
+            Shoot(playerGridController.GridPosition, playerGridController.FacingDirection);
         }
 
         public void Shoot(Vector2Int startPosition, GridDirection startDirection)
         {
             if (laserRenderer != null)
-            {
                 laserRenderer.Clear();
-            }
-
-            if (gridManager != null)
-            {
-                gridManager.ResetAllTargets();
-            }
 
             LaserResult result = laserSimulator.Simulate(startPosition, startDirection);
 
+            if (gridManager != null)
+                gridManager.EvaluateLaserResult(result);
+
             if (laserRenderer != null)
-            {
                 laserRenderer.Render(result);
-            }
 
-            if (gridManager != null &&
-                result.ReachedTarget &&
-                result.TargetPosition.HasValue)
-            {
-                gridManager.SetTargetActivated(result.TargetPosition.Value, true);
-            }
-
-            if (result.ReachedTarget)
-            {
+            if (gridManager != null && gridManager.AreAllTargetsActivated())
                 Debug.Log("스테이지 클리어");
-            }
+            else if (result.ReachedTarget)
+                Debug.Log("목표 일부 도달");
             else if (result.LoopDetected)
-            {
-                // 루프 감지 됨
-            }
-            else
-            {
-                // 도달 실패
-            }
+                Debug.Log("레이저 루프 감지");
         }
 
         private void ClearLaserOnMove(GridDirection direction)
@@ -99,8 +93,12 @@ namespace Laser
         private void ClearLaser()
         {
             if (laserRenderer != null)
-            {
                 laserRenderer.Clear();
+
+            if (gridManager != null)
+            {
+                gridManager.ResetAllTargets();
+                gridManager.ResetAllDistanceSensors();
             }
         }
     }

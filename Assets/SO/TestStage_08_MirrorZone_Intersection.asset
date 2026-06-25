@@ -10,28 +10,44 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 11f1cafd2a1febf40be5ad4846ab56eb, type: 3}
-  m_Name: TestStageData_
+  m_Name: TestStage_08_MirrorZone_Intersection
   m_EditorClassIdentifier: Assembly-CSharp::Core.StageData
-  stageNumber: 1
-  stageName: Stage 1
-  width: 8
+  stageNumber: 8
+  stageName: Test 08 - Mirror Zone and Intersection Target
+  width: 12
   height: 8
-  playerStartPosition: {x: 0, y: 0}
+  playerStartPosition: {x: 0, y: 3}
   playerStartDirection: 1
-  wallPositions:
-  - {x: 3, y: 3}
-  - {x: 3, y: 4}
-  - {x: 3, y: 5}
-  targetPositions:
-  - {x: 5, y: 7}
-  advancedTargets: []
-  sequenceLockPattern: 
-  distanceSensors: []
-  transformZones: []
+  wallPositions: []
+  targetPositions: []
+  advancedTargets:
+  - targetId: Cross_Target
+    targetType: 3
+    position: {x: 6, y: 3}
+    requiredColor: 0
+    sequenceValue: 1
+    detectionRadius: 0.35
+    requireDifferentColors: 0
+    stopLaserOnHit: 0
+  sequenceLockPattern: []
+  distanceSensors:
+  - sensorId: Sensor_MirrorZone
+    position: {x: 2, y: 3}
+    detectionRadius: 0.25
+    activateTransformZone: 1
+    transformZoneId: Zone_Mirror_A
+  transformZones:
+  - zoneId: Zone_Mirror_A
+    center: {x: 9, y: 5}
+    width: 3
+    height: 3
+    zoneType: 1
+    clockwise: 1
+    mirrorAxis: 0
   objects:
-  - objectType: 2
+  - objectType: 3
     manipulationType: 0
-    position: {x: 5, y: 6}
+    position: {x: 3, y: 3}
     direction: 0
     mirrorShape: 1
     prismType: 0
@@ -42,8 +58,19 @@ MonoBehaviour:
     distanceBoost: 5
   - objectType: 2
     manipulationType: 0
-    position: {x: 7, y: 6}
-    direction: 3
+    position: {x: 3, y: 5}
+    direction: 1
+    mirrorShape: 1
+    prismType: 0
+    splitterMode: 2
+    prismColor: 1
+    refractionMode: 0
+    lensType: 0
+    distanceBoost: 5
+  - objectType: 2
+    manipulationType: 0
+    position: {x: 6, y: 5}
+    direction: 2
     mirrorShape: 2
     prismType: 0
     splitterMode: 2
@@ -52,42 +79,9 @@ MonoBehaviour:
     lensType: 0
     distanceBoost: 5
   - objectType: 2
-    manipulationType: 3
-    position: {x: 3, y: 1}
-    direction: 2
-    mirrorShape: 1
-    prismType: 0
-    splitterMode: 2
-    prismColor: 1
-    refractionMode: 0
-    lensType: 0
-    distanceBoost: 5
-  - objectType: 1
-    manipulationType: 1
-    position: {x: 0, y: 4}
-    direction: 0
-    mirrorShape: 1
-    prismType: 0
-    splitterMode: 2
-    prismColor: 1
-    refractionMode: 0
-    lensType: 0
-    distanceBoost: 5
-  - objectType: 1
-    manipulationType: 1
-    position: {x: 1, y: 4}
-    direction: 0
-    mirrorShape: 1
-    prismType: 0
-    splitterMode: 2
-    prismColor: 1
-    refractionMode: 0
-    lensType: 0
-    distanceBoost: 5
-  - objectType: 1
-    manipulationType: 1
-    position: {x: 2, y: 4}
-    direction: 0
+    manipulationType: 0
+    position: {x: 8, y: 5}
+    direction: 1
     mirrorShape: 1
     prismType: 0
     splitterMode: 2

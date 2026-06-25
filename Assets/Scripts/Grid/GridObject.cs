@@ -22,6 +22,17 @@ namespace Grid
         public bool useMirrorShapeFilter;
         public MirrorShape mirrorShape;
 
+        [Header("Prism Filter")]
+        public bool usePrismTypeFilter;
+        public PrismType prismType;
+
+        [Header("Lens Filter")]
+        public bool useLensTypeFilter;
+        public LensType lensType;
+
+        [Header("Transform")]
+        public bool overrideLocalScale;
+        public Vector3 localScale = Vector3.one;
         public Vector3 localRotationOffset;
     }
 
@@ -38,6 +49,16 @@ namespace Grid
         [Header("Mirror")]
         [SerializeField] private MirrorShape mirrorShape = MirrorShape.NormalL;
 
+        [Header("Prism")]
+        [SerializeField] private PrismType prismType = PrismType.Splitter;
+        [SerializeField] private PrismSplitterMode splitterMode = PrismSplitterMode.ForwardLeftRight;
+        [SerializeField] private LaserColorKind prismColor = LaserColorKind.Red;
+        [SerializeField] private RefractionMode refractionMode = RefractionMode.Clockwise45;
+
+        [Header("Lens")]
+        [SerializeField] private LensType lensType = LensType.DistanceAmplifier;
+        [SerializeField] private int distanceBoost = 5;
+
         [Header("Visual Entries")]
         [SerializeField] private List<GridObjectVisualEntry> visualEntries = new();
 
@@ -46,6 +67,12 @@ namespace Grid
         public Vector2Int GridPosition => gridPosition;
         public GridDirection Direction => direction;
         public MirrorShape MirrorShape => mirrorShape;
+        public PrismType PrismType => prismType;
+        public PrismSplitterMode SplitterMode => splitterMode;
+        public LaserColorKind PrismColor => prismColor;
+        public RefractionMode RefractionMode => refractionMode;
+        public LensType LensType => lensType;
+        public int DistanceBoost => distanceBoost;
 
         public bool CanPush => manipulationType.CanPush();
         public bool CanRotate => manipulationType.CanRotate();
@@ -63,6 +90,14 @@ namespace Grid
             direction = data.direction;
             mirrorShape = data.mirrorShape;
 
+            prismType = data.prismType;
+            splitterMode = data.splitterMode;
+            prismColor = data.prismColor;
+            refractionMode = data.refractionMode;
+
+            lensType = data.lensType;
+            distanceBoost = data.distanceBoost;
+
             transform.position = worldPosition;
 
             RefreshVisual();
@@ -77,6 +112,21 @@ namespace Grid
         public void SetDirection(GridDirection newDirection)
         {
             direction = newDirection;
+            RefreshVisual();
+        }
+
+        public void SetMirrorShape(MirrorShape newShape)
+        {
+            mirrorShape = newShape;
+            RefreshVisual();
+        }
+
+        public void ApplyTransformedState(Vector2Int newPosition, GridDirection newDirection, MirrorShape newMirrorShape, Vector3 worldPosition)
+        {
+            gridPosition = newPosition;
+            direction = newDirection;
+            mirrorShape = newMirrorShape;
+            transform.position = worldPosition;
             RefreshVisual();
         }
 
@@ -98,37 +148,91 @@ namespace Grid
             RefreshVisual();
         }
 
-        public bool TryReflectLaser(GridDirection laserMoveDirection, out GridDirection reflectedDirection)
+        public bool TryReflectLaser(LaserDirection laserMoveDirection, out LaserDirection reflectedDirection)
         {
             reflectedDirection = laserMoveDirection;
 
             if (objectType != PuzzleObjectType.Mirror)
                 return false;
 
-            GridDirection entrySide = laserMoveDirection.Opposite();
+            // ㄴ/역ㄴ 거울은 현재 4방향 레이저만 반사한다.
+            // 대각선 레이저는 굴절 프리즘으로 다루고, 거울에는 막힌다.
+            if (!laserMoveDirection.TryToGridDirection(out GridDirection gridMoveDirection))
+                return false;
+
+            GridDirection entrySide = gridMoveDirection.Opposite();
 
             GetMirrorOpenSides(mirrorShape, direction, out GridDirection sideA, out GridDirection sideB);
 
             if (entrySide == sideA)
             {
-                reflectedDirection = sideB;
+                reflectedDirection = LaserDirectionExtensions.FromGridDirection(sideB);
                 return true;
             }
 
             if (entrySide == sideB)
             {
-                reflectedDirection = sideA;
+                reflectedDirection = LaserDirectionExtensions.FromGridDirection(sideA);
                 return true;
             }
 
             return false;
         }
 
-        private static void GetMirrorOpenSides(
-            MirrorShape shape,
-            GridDirection mirrorDirection,
-            out GridDirection sideA,
-            out GridDirection sideB)
+        public void GetSplitterOutputDirections(LaserDirection inputDirection, List<LaserDirection> outputDirections)
+        {
+            outputDirections.Clear();
+
+            if (objectType != PuzzleObjectType.Prism || prismType != PrismType.Splitter)
+                return;
+
+            LaserDirection left = inputDirection.RotateCounterClockwise90();
+            LaserDirection right = inputDirection.RotateClockwise90();
+
+            switch (splitterMode)
+            {
+                case PrismSplitterMode.ForwardAndLeft:
+                    outputDirections.Add(inputDirection);
+                    outputDirections.Add(left);
+                    break;
+
+                case PrismSplitterMode.ForwardAndRight:
+                    outputDirections.Add(inputDirection);
+                    outputDirections.Add(right);
+                    break;
+
+                case PrismSplitterMode.ForwardLeftRight:
+                    outputDirections.Add(inputDirection);
+                    outputDirections.Add(left);
+                    outputDirections.Add(right);
+                    break;
+
+                case PrismSplitterMode.LeftAndRight:
+                    outputDirections.Add(left);
+                    outputDirections.Add(right);
+                    break;
+            }
+        }
+
+        public LaserColorKind ApplyColorPrism(LaserColorKind currentColor)
+        {
+            if (objectType != PuzzleObjectType.Prism || prismType != PrismType.Color)
+                return currentColor;
+
+            return prismColor;
+        }
+
+        public LaserDirection ApplyRefractionPrism(LaserDirection inputDirection)
+        {
+            if (objectType != PuzzleObjectType.Prism || prismType != PrismType.Refraction)
+                return inputDirection;
+
+            return refractionMode == RefractionMode.Clockwise45
+                ? inputDirection.RotateClockwise45()
+                : inputDirection.RotateCounterClockwise45();
+        }
+
+        private static void GetMirrorOpenSides(MirrorShape shape, GridDirection mirrorDirection, out GridDirection sideA, out GridDirection sideB)
         {
             if (shape == MirrorShape.NormalL)
             {
@@ -145,9 +249,7 @@ namespace Grid
             sideB = RotateSideByMirrorDirection(sideB, mirrorDirection);
         }
 
-        private static GridDirection RotateSideByMirrorDirection(
-            GridDirection side,
-            GridDirection mirrorDirection)
+        private static GridDirection RotateSideByMirrorDirection(GridDirection side, GridDirection mirrorDirection)
         {
             int rotateCount = mirrorDirection switch
             {
@@ -161,9 +263,7 @@ namespace Grid
             GridDirection result = side;
 
             for (int i = 0; i < rotateCount; i++)
-            {
                 result = result.RotateClockwise();
-            }
 
             return result;
         }
@@ -171,7 +271,6 @@ namespace Grid
         private void RefreshVisual()
         {
             ApplyRootRotation();
-
             DisableAllVisuals();
 
             GridObjectVisualEntry entry = FindBestVisualEntry();
@@ -182,20 +281,22 @@ namespace Grid
             entry.visualObject.SetActive(true);
 
             Transform visualTransform = entry.visualObject.transform;
-
             Vector3 localEuler = entry.localRotationOffset;
 
             if (objectType == PuzzleObjectType.Mirror && mirrorShape == MirrorShape.ReverseL && !entry.useMirrorShapeFilter)
-            {
                 localEuler.y += 180f;
-            }
 
             visualTransform.localRotation = Quaternion.Euler(localEuler);
+
+            if (entry.overrideLocalScale)
+                visualTransform.localScale = entry.localScale;
         }
 
         private void ApplyRootRotation()
         {
-            if (objectType == PuzzleObjectType.Mirror || objectType == PuzzleObjectType.Prism)
+            if (objectType == PuzzleObjectType.Mirror ||
+                objectType == PuzzleObjectType.Prism ||
+                objectType == PuzzleObjectType.Lens)
             {
                 transform.rotation = Quaternion.Euler(0f, 0f, direction.ToAngleZ());
                 return;
@@ -206,7 +307,7 @@ namespace Grid
 
         private GridObjectVisualEntry FindBestVisualEntry()
         {
-            GridObjectVisualEntry fallback = null;
+            GridObjectVisualEntry best = null;
             int bestScore = -1;
 
             for (int i = 0; i < visualEntries.Count; i++)
@@ -219,30 +320,37 @@ namespace Grid
                 if (entry.objectType != objectType)
                     continue;
 
-                if (entry.useManipulationFilter &&
-                    entry.manipulationType != manipulationType)
+                if (entry.useManipulationFilter && entry.manipulationType != manipulationType)
                     continue;
 
-                if (entry.useMirrorShapeFilter &&
-                    entry.mirrorShape != mirrorShape)
+                if (entry.useMirrorShapeFilter && entry.mirrorShape != mirrorShape)
+                    continue;
+
+                if (entry.usePrismTypeFilter && entry.prismType != prismType)
+                    continue;
+
+                if (entry.useLensTypeFilter && entry.lensType != lensType)
                     continue;
 
                 int score = 0;
 
                 if (entry.useManipulationFilter)
                     score += 10;
-
                 if (entry.useMirrorShapeFilter)
+                    score += 10;
+                if (entry.usePrismTypeFilter)
+                    score += 10;
+                if (entry.useLensTypeFilter)
                     score += 10;
 
                 if (score > bestScore)
                 {
                     bestScore = score;
-                    fallback = entry;
+                    best = entry;
                 }
             }
 
-            return fallback;
+            return best;
         }
 
         private void DisableAllVisuals()

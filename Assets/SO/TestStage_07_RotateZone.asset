@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 11f1cafd2a1febf40be5ad4846ab56eb, type: 3}
+  m_Name: TestStage_07_RotateZone
+  m_EditorClassIdentifier: Assembly-CSharp::Core.StageData
+  stageNumber: 7
+  stageName: Test 07 - Distance Sensor Triggers Rotate Zone
+  width: 11
+  height: 7
+  playerStartPosition: {x: 0, y: 1}
+  playerStartDirection: 1
+  wallPositions: []
+  targetPositions:
+  - {x: 9, y: 1}
+  advancedTargets: []
+  sequenceLockPattern: []
+  distanceSensors:
+  - sensorId: Sensor_RotateZone
+    position: {x: 2, y: 1}
+    detectionRadius: 0.25
+    activateTransformZone: 1
+    transformZoneId: Zone_Rotate_A
+  transformZones:
+  - zoneId: Zone_Rotate_A
+    center: {x: 5, y: 3}
+    width: 3
+    height: 3
+    zoneType: 0
+    clockwise: 1
+    mirrorAxis: 0
+  objects:
+  - objectType: 2
+    manipulationType: 0
+    position: {x: 4, y: 3}
+    direction: 0
+    mirrorShape: 1
+    prismType: 0
+    splitterMode: 2
+    prismColor: 1
+    refractionMode: 0
+    lensType: 0
+    distanceBoost: 5

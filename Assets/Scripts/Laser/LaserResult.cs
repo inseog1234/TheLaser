@@ -6,11 +6,14 @@ namespace Laser
     public class LaserResult
     {
         public readonly List<LaserPathNode> PathNodes = new();
+        public readonly List<LaserSegment> Segments = new();
+        public readonly List<LaserTargetHit> TargetHits = new();
 
         public bool ReachedTarget { get; private set; }
         public bool HitWall { get; private set; }
         public bool HitObjectAndStopped { get; private set; }
         public bool LoopDetected { get; private set; }
+        public bool DistanceEnded { get; private set; }
 
         public Vector2Int? TargetPosition { get; private set; }
         public Vector2Int? StopPosition { get; private set; }
@@ -18,6 +21,18 @@ namespace Laser
         public void AddNode(LaserPathNode node)
         {
             PathNodes.Add(node);
+        }
+
+        public void AddSegment(LaserSegment segment)
+        {
+            Segments.Add(segment);
+        }
+
+        public void AddTargetHit(LaserTargetHit hit)
+        {
+            TargetHits.Add(hit);
+            ReachedTarget = true;
+            TargetPosition = hit.Position;
         }
 
         public void SetReachedTarget(Vector2Int position)
@@ -42,6 +57,12 @@ namespace Laser
         public void SetLoopDetected(Vector2Int position)
         {
             LoopDetected = true;
+            StopPosition = position;
+        }
+
+        public void SetDistanceEnded(Vector2Int position)
+        {
+            DistanceEnded = true;
             StopPosition = position;
         }
     }
