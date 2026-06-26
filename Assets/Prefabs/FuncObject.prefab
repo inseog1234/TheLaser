@@ -165,6 +165,9 @@ MonoBehaviour:
     prismType: 0
     useLensTypeFilter: 0
     lensType: 0
+    functionSymbolRenderer: {fileID: 0}
+    useFunctionSymbolColor: 0
+    hideFunctionSymbolWhenUnused: 1
     overrideLocalScale: 0
     localScale: {x: 1, y: 1, z: 1}
     localRotationOffset: {x: 0, y: 0, z: 0}
@@ -178,6 +181,9 @@ MonoBehaviour:
     prismType: 0
     useLensTypeFilter: 0
     lensType: 0
+    functionSymbolRenderer: {fileID: 0}
+    useFunctionSymbolColor: 0
+    hideFunctionSymbolWhenUnused: 1
     overrideLocalScale: 0
     localScale: {x: 1, y: 1, z: 1}
     localRotationOffset: {x: 0, y: 0, z: 0}
@@ -191,6 +197,9 @@ MonoBehaviour:
     prismType: 0
     useLensTypeFilter: 0
     lensType: 0
+    functionSymbolRenderer: {fileID: 0}
+    useFunctionSymbolColor: 0
+    hideFunctionSymbolWhenUnused: 1
     overrideLocalScale: 0
     localScale: {x: 1, y: 1, z: 1}
     localRotationOffset: {x: 0, y: 0, z: 0}
@@ -204,6 +213,9 @@ MonoBehaviour:
     prismType: 0
     useLensTypeFilter: 0
     lensType: 0
+    functionSymbolRenderer: {fileID: 0}
+    useFunctionSymbolColor: 0
+    hideFunctionSymbolWhenUnused: 1
     overrideLocalScale: 0
     localScale: {x: 1, y: 1, z: 1}
     localRotationOffset: {x: 0, y: 0, z: 0}
@@ -217,6 +229,9 @@ MonoBehaviour:
     prismType: 1
     useLensTypeFilter: 0
     lensType: 0
+    functionSymbolRenderer: {fileID: 4695102512110217646}
+    useFunctionSymbolColor: 1
+    hideFunctionSymbolWhenUnused: 1
     overrideLocalScale: 0
     localScale: {x: 1, y: 1, z: 1}
     localRotationOffset: {x: 0, y: 0, z: 0}
@@ -230,6 +245,9 @@ MonoBehaviour:
     prismType: 2
     useLensTypeFilter: 0
     lensType: 0
+    functionSymbolRenderer: {fileID: 0}
+    useFunctionSymbolColor: 0
+    hideFunctionSymbolWhenUnused: 1
     overrideLocalScale: 0
     localScale: {x: 1, y: 1, z: 1}
     localRotationOffset: {x: 0, y: 0, z: 0}
@@ -243,6 +261,9 @@ MonoBehaviour:
     prismType: 0
     useLensTypeFilter: 1
     lensType: 0
+    functionSymbolRenderer: {fileID: 0}
+    useFunctionSymbolColor: 0
+    hideFunctionSymbolWhenUnused: 1
     overrideLocalScale: 0
     localScale: {x: 1, y: 1, z: 1}
     localRotationOffset: {x: 0, y: 0, z: 0}
@@ -1313,7 +1334,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1788790272307656517
 Transform:
   m_ObjectHideFlags: 0

@@ -6,7 +6,7 @@ namespace Laser
     public enum LaserPathNodeType
     {
         Start, Straight, Corner, Target, Blocked, Loop,
-        End, CornerEnd, Splitter
+        End, CornerEnd, Splitter, StartEnd
     }
 
     public enum LaserCornerAngle
@@ -45,6 +45,11 @@ namespace Laser
         public static LaserPathNode Start(Vector2Int position, LaserDirection outgoingDirection, LaserColorKind color, int beamId)
         {
             return new LaserPathNode(position, false, LaserDirection.Up, true, outgoingDirection, LaserPathNodeType.Start, color, beamId, LaserCornerAngle.None);
+        }
+
+        public static LaserPathNode StartEnd(Vector2Int position, LaserDirection outgoingDirection, LaserColorKind color, int beamId)
+        {
+            return new LaserPathNode(position, false, LaserDirection.Up, true, outgoingDirection, LaserPathNodeType.StartEnd, color, beamId, LaserCornerAngle.None);
         }
 
         public static LaserPathNode Straight(Vector2Int position, LaserDirection direction, LaserColorKind color, int beamId)

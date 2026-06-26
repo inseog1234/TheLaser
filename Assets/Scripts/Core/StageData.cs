@@ -21,7 +21,7 @@ namespace Core
 
         [Header("Cells")]
         public List<Vector2Int> wallPositions = new();
-        public List<Vector2Int> targetPositions = new(); // 기존 일반 도착지 호환용
+        public List<Vector2Int> targetPositions = new();
 
         [Header("Advanced Targets")]
         public List<StageTargetData> advancedTargets = new();

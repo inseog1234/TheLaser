@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
 using Core;
 
 namespace Laser
@@ -10,6 +11,16 @@ namespace Laser
         Any,
         Direction,
         CornerSides
+    }
+
+    [Serializable]
+    public class LaserEndMoveTarget
+    {
+        public Transform target;
+
+        [Header("Move Option")]
+        public Vector3 localMoveDirection = Vector3.up;
+        public float moveMultiplier = 0.5f;
     }
 
     [Serializable]
@@ -36,6 +47,16 @@ namespace Laser
         [Header("Rotation")]
         public bool autoRotateVisual = false;
         public Vector3 rotationOffset;
+
+        [Header("Color")]
+        public bool applyLaserColorToMainVisual = true;
+        public GameObject colorSymbolObject;
+        public bool hideColorSymbolWhenDefault = false;
+
+        [Header("End Scale Targets")]
+        public List<Transform> endScaleTargets = new();
+        public List<LaserEndMoveTarget> endMoveTargets = new();
+        
     }
 
     public class LaserPathTile : MonoBehaviour
@@ -48,18 +69,21 @@ namespace Laser
 
         [Header("Diagonal Straight Scale")]
         [SerializeField] private float diagonalStraightYScaleMultiplier = 1.5f;
+        [SerializeField] private float endYScaleMultiplier = 1.6f;
 
         private readonly Dictionary<GameObject, Vector3> initialLocalScales = new();
         private readonly Dictionary<GameObject, Quaternion> initialLocalRotations = new();
+        private readonly Dictionary<Transform, Vector3> initialTransformScales = new();
+        private readonly Dictionary<Transform, Vector3> initialTransformPositions = new();
 
         private void Awake()
         {
-            CacheInitialRotations();
+            CacheInitialTransforms();
         }
 
         private void OnValidate()
         {
-            CacheInitialRotations();
+            CacheInitialTransforms();
         }
 
         public void SetNode(LaserPathNode node)
@@ -69,8 +93,8 @@ namespace Laser
 
         public void SetNode(LaserPathNode node, Color laserColor)
         {
-            if (initialLocalRotations.Count <= 0)
-                CacheInitialRotations();
+            if (initialLocalRotations.Count <= 0 || initialLocalScales.Count <= 0)
+                CacheInitialTransforms();
 
             DisableAllVisuals();
 
@@ -89,51 +113,143 @@ namespace Laser
                 entry.visualObject.transform.localRotation = baseRotation * Quaternion.Euler(entry.rotationOffset + flipEuler + new Vector3(0f, 0f, angle));
             }
 
-            ApplyDiagonalStraightScale(entry.visualObject, node);
-            ApplyColor(entry.visualObject, laserColor);
+            ApplyDiagonalStraightScale(entry, node);
+            
+            ApplyLaserColor(entry, node, laserColor);
         }
 
-        private void ApplyDiagonalStraightScale(GameObject visualObject, LaserPathNode node)
+        public void ResetTile()
         {
-            if (visualObject == null)
-                return;
-
-            Vector3 baseScale = GetInitialLocalScale(visualObject);
-            visualObject.transform.localScale = baseScale;
-
-            if (node.NodeType != LaserPathNodeType.Straight)
-                return;
-
-            LaserDirection direction = GetMainDirection(node);
-
-            if (!IsDiagonalDirection(direction))
-                return;
-
-            Vector3 scaled = baseScale;
-            scaled.y *= diagonalStraightYScaleMultiplier;
-            visualObject.transform.localScale = scaled;
+            DisableAllVisuals();
         }
 
-        private Vector3 GetInitialLocalScale(GameObject visualObject)
+        private void ApplyLaserColor(LaserVisualEntry entry, LaserPathNode node, Color laserColor)
         {
-            if (visualObject != null && initialLocalScales.TryGetValue(visualObject, out Vector3 scale))
+            if (entry == null)
+                return;
+
+            if (entry.visualObject != null && entry.applyLaserColorToMainVisual)
+                ApplyColor(entry.visualObject, laserColor);
+
+            if (entry.colorSymbolObject == null)
+                return;
+
+            bool showSymbol = !(entry.hideColorSymbolWhenDefault && node.Color == LaserColorKind.Default);
+            entry.colorSymbolObject.SetActive(showSymbol);
+
+            if (showSymbol)
+                ApplyColor(entry.colorSymbolObject, laserColor);
+        }
+
+        private void ApplyDiagonalStraightScale(LaserVisualEntry entry, LaserPathNode node)
+        {
+            if (entry == null || entry.visualObject == null)
+                return;
+
+            Vector3 baseScale = GetInitialLocalScale(entry.visualObject);
+            entry.visualObject.transform.localScale = baseScale;
+
+            if (node.NodeType == LaserPathNodeType.Straight)
+            {
+                LaserDirection direction = GetMainDirection(node);
+
+                if (IsDiagonalDirection(direction))
+                {
+                    Vector3 scaled = baseScale;
+                    scaled.y *= diagonalStraightYScaleMultiplier;
+                    entry.visualObject.transform.localScale = scaled;
+                }
+            }
+
+            if (node.NodeType == LaserPathNodeType.End)
+            {
+                ApplyEndScaleTargets(entry);
+                ApplyEndMoveTargets(entry);
+            }
+        }
+
+
+        private void ApplyEndMoveTargets(LaserVisualEntry entry)
+        {
+            float extraLength = GetEndExtraLength(entry);
+
+            for (int i = 0; i < entry.endMoveTargets.Count; i++)
+            {
+                LaserEndMoveTarget moveTarget = entry.endMoveTargets[i];
+
+                if (moveTarget == null || moveTarget.target == null)
+                    continue;
+
+                Vector3 basePosition = GetInitialTransformPosition(moveTarget.target);
+                Vector3 moveDirection = moveTarget.localMoveDirection;
+
+                if (moveDirection.sqrMagnitude <= 0.0001f)
+                    moveDirection = Vector3.up;
+
+                moveDirection.Normalize();
+
+                moveTarget.target.localPosition = basePosition + moveDirection * extraLength * moveTarget.moveMultiplier;
+            }
+        }
+
+        private float GetEndExtraLength(LaserVisualEntry entry)
+        {
+            float extraLength = 0f;
+
+            for (int i = 0; i < entry.endScaleTargets.Count; i++)
+            {
+                Transform target = entry.endScaleTargets[i];
+
+                if (target == null)
+                    continue;
+
+                Vector3 baseScale = GetInitialTransformScale(target);
+                float before = Mathf.Abs(baseScale.y);
+                float after = Mathf.Abs(baseScale.y * endYScaleMultiplier);
+                float extra = Mathf.Abs(after - before);
+
+                if (extra > extraLength)
+                    extraLength = extra;
+            }
+
+            return extraLength;
+        }
+
+        private Vector3 GetInitialTransformScale(Transform target)
+        {
+            if (target != null && initialTransformScales.TryGetValue(target, out Vector3 scale))
                 return scale;
 
-            return Vector3.one;
+            return target != null ? target.localScale : Vector3.one;
         }
 
-        private bool IsDiagonalDirection(LaserDirection direction)
+        private Vector3 GetInitialTransformPosition(Transform target)
         {
-            return direction == LaserDirection.UpRight ||
-                direction == LaserDirection.DownRight ||
-                direction == LaserDirection.DownLeft ||
-                direction == LaserDirection.UpLeft;
+            if (target != null && initialTransformPositions.TryGetValue(target, out Vector3 position))
+                return position;
+
+            return target != null ? target.localPosition : Vector3.zero;
+        }
+
+        private void ApplyEndScaleTargets(LaserVisualEntry entry)
+        {
+            for (int i = 0; i < entry.endScaleTargets.Count; i++)
+            {
+                Transform target = entry.endScaleTargets[i];
+
+                if (target == null)
+                    continue;
+
+                Vector3 baseScale = GetInitialTransformScale(target);
+                Vector3 scaled = baseScale;
+                scaled.y *= endYScaleMultiplier;
+                target.localScale = scaled;
+            }
         }
 
         private Vector3 GetCornerFlipEuler(LaserPathNode node)
         {
-            if (node.NodeType != LaserPathNodeType.Corner &&
-                node.NodeType != LaserPathNodeType.CornerEnd)
+            if (node.NodeType != LaserPathNodeType.Corner && node.NodeType != LaserPathNodeType.CornerEnd)
                 return Vector3.zero;
 
             if (node.CornerAngle != LaserCornerAngle.Turn45)
@@ -152,7 +268,6 @@ namespace Laser
         {
             int incomingIndex = ToDirectionIndex(incomingDirection);
             int outgoingIndex = ToDirectionIndex(outgoingDirection);
-
             int diff = outgoingIndex - incomingIndex;
 
             if (diff < 0)
@@ -177,29 +292,58 @@ namespace Laser
             };
         }
 
-        public void ResetTile()
-        {
-            DisableAllVisuals();
-        }
-
-        private void CacheInitialRotations()
+        private void CacheInitialTransforms()
         {
             initialLocalRotations.Clear();
             initialLocalScales.Clear();
+            initialTransformScales.Clear();
+            initialTransformPositions.Clear();
 
             for (int i = 0; i < visualEntries.Count; i++)
             {
                 LaserVisualEntry entry = visualEntries[i];
 
-                if (entry == null || entry.visualObject == null)
+                if (entry == null)
                     continue;
 
-                if (!initialLocalRotations.ContainsKey(entry.visualObject))
-                    initialLocalRotations.Add(entry.visualObject, entry.visualObject.transform.localRotation);
+                CacheInitialTransform(entry.visualObject);
+                CacheInitialTransform(entry.colorSymbolObject);
 
-                if (!initialLocalScales.ContainsKey(entry.visualObject))
-                    initialLocalScales.Add(entry.visualObject, entry.visualObject.transform.localScale);
+                for (int j = 0; j < entry.endScaleTargets.Count; j++)
+                    CacheInitialTransform(entry.endScaleTargets[j]);
+
+                for (int j = 0; j < entry.endMoveTargets.Count; j++)
+                {
+                    if (entry.endMoveTargets[j] == null)
+                        continue;
+
+                    CacheInitialTransform(entry.endMoveTargets[j].target);
+                }
             }
+        }
+
+        private void CacheInitialTransform(Transform target)
+        {
+            if (target == null)
+                return;
+
+            if (!initialTransformScales.ContainsKey(target))
+                initialTransformScales.Add(target, target.localScale);
+
+            if (!initialTransformPositions.ContainsKey(target))
+                initialTransformPositions.Add(target, target.localPosition);
+        }
+
+        private void CacheInitialTransform(GameObject targetObject)
+        {
+            if (targetObject == null)
+                return;
+
+            if (!initialLocalRotations.ContainsKey(targetObject))
+                initialLocalRotations.Add(targetObject, targetObject.transform.localRotation);
+
+            if (!initialLocalScales.ContainsKey(targetObject))
+                initialLocalScales.Add(targetObject, targetObject.transform.localScale);
         }
 
         private Quaternion GetInitialLocalRotation(GameObject visualObject)
@@ -210,15 +354,26 @@ namespace Laser
             return Quaternion.identity;
         }
 
+        private Vector3 GetInitialLocalScale(GameObject visualObject)
+        {
+            if (visualObject != null && initialLocalScales.TryGetValue(visualObject, out Vector3 scale))
+                return scale;
+
+            return Vector3.one;
+        }
+
         private void ApplyColor(GameObject targetObject, Color color)
         {
             if (targetObject == null)
                 return;
 
-            SpriteRenderer[] renderers = targetObject.GetComponentsInChildren<SpriteRenderer>(true);
+            SpriteRenderer[] spriteRenderers = targetObject.GetComponentsInChildren<SpriteRenderer>(true);
+            for (int i = 0; i < spriteRenderers.Length; i++)
+                spriteRenderers[i].color = color;
 
-            for (int i = 0; i < renderers.Length; i++)
-                renderers[i].color = color;
+            TMP_Text[] texts = targetObject.GetComponentsInChildren<TMP_Text>(true);
+            for (int i = 0; i < texts.Length; i++)
+                texts[i].color = color;
         }
 
         private LaserVisualEntry FindBestVisual(LaserPathNode node)
@@ -310,13 +465,33 @@ namespace Laser
             {
                 LaserVisualEntry entry = visualEntries[i];
 
-                if (entry == null || entry.visualObject == null)
+                if (entry == null)
                     continue;
 
-                entry.visualObject.transform.localRotation = GetInitialLocalRotation(entry.visualObject);
-                entry.visualObject.transform.localScale = GetInitialLocalScale(entry.visualObject);
-                entry.visualObject.SetActive(false);
+                for (int j = 0; j < entry.endScaleTargets.Count; j++)
+                    ResetEndScaleTarget(entry.endScaleTargets[j]);
+
+                ResetAndDisable(entry.colorSymbolObject);
+                ResetAndDisable(entry.visualObject);
             }
+        }
+
+        private void ResetEndScaleTarget(Transform target)
+        {
+            if (target == null)
+                return;
+
+            target.localScale = GetInitialTransformScale(target);
+        }
+
+        private void ResetAndDisable(GameObject targetObject)
+        {
+            if (targetObject == null)
+                return;
+
+            targetObject.transform.localRotation = GetInitialLocalRotation(targetObject);
+            targetObject.transform.localScale = GetInitialLocalScale(targetObject);
+            targetObject.SetActive(false);
         }
 
         private float GetRotationAngle(LaserPathNode node)
@@ -380,6 +555,14 @@ namespace Laser
         private bool IsSamePair(LaserDirection a, LaserDirection b, LaserDirection x, LaserDirection y)
         {
             return (a == x && b == y) || (a == y && b == x);
+        }
+
+        private bool IsDiagonalDirection(LaserDirection direction)
+        {
+            return direction == LaserDirection.UpRight ||
+                direction == LaserDirection.DownRight ||
+                direction == LaserDirection.DownLeft ||
+                direction == LaserDirection.UpLeft;
         }
     }
 }

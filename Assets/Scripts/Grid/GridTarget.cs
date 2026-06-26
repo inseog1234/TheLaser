@@ -1,14 +1,36 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
 using Core;
 
 namespace Grid
 {
+    [Serializable]
+    public class TargetColorVisual
+    {
+        public LaserColorKind colorKind = LaserColorKind.Default;
+        public Color color = Color.white;
+        public string symbol = "";
+    }
+
     public class GridTarget : MonoBehaviour
     {
         [Header("Visual")]
         [SerializeField] private GameObject inactiveVisual;
         [SerializeField] private GameObject activatedVisual;
         [SerializeField] private GameObject failedVisual;
+
+        [Header("Info Visual")]
+        [SerializeField] private SpriteRenderer colorIndicatorRenderer;
+        [SerializeField] private TMP_Text symbolText;
+        [SerializeField] private bool showNormalTargetSymbol = false;
+        [SerializeField] private string normalTargetSymbol = "";
+        [SerializeField] private string intersectionTargetSymbol = "×";
+        [SerializeField] private Color normalTargetColor = Color.white;
+        [SerializeField] private Color sequenceTargetColor = new Color(1f, 0.85f, 0.2f, 1f);
+        [SerializeField] private Color intersectionTargetColor = new Color(1f, 0.45f, 1f, 1f);
+        [SerializeField] private List<TargetColorVisual> colorPalette = new();
 
         [Header("Runtime")]
         [SerializeField] private string targetId;
@@ -31,6 +53,11 @@ namespace Grid
         public bool StopLaserOnHit => stopLaserOnHit;
         public bool IsActivated => isActivated;
 
+        private void OnValidate()
+        {
+            RefreshInfoVisual();
+        }
+
         public void Initialize(Vector2Int position)
         {
             targetId = $"Target_{position.x}_{position.y}";
@@ -42,14 +69,12 @@ namespace Grid
             requireDifferentColors = false;
             stopLaserOnHit = true;
             SetActivated(false);
+            RefreshInfoVisual();
         }
 
         public void Initialize(StageTargetData data)
         {
-            targetId = string.IsNullOrWhiteSpace(data.targetId)
-                ? $"Target_{data.position.x}_{data.position.y}"
-                : data.targetId;
-
+            targetId = string.IsNullOrWhiteSpace(data.targetId) ? $"Target_{data.position.x}_{data.position.y}" : data.targetId;
             targetType = data.targetType;
             gridPosition = data.position;
             requiredColor = data.requiredColor;
@@ -58,6 +83,7 @@ namespace Grid
             requireDifferentColors = data.requireDifferentColors;
             stopLaserOnHit = data.stopLaserOnHit;
             SetActivated(false);
+            RefreshInfoVisual();
         }
 
         public void SetActivated(bool activated)
@@ -72,6 +98,8 @@ namespace Grid
 
             if (failedVisual != null)
                 failedVisual.SetActive(false);
+
+            RefreshInfoVisual();
         }
 
         public void SetFailed(bool failed)
@@ -87,6 +115,102 @@ namespace Grid
                 if (activatedVisual != null)
                     activatedVisual.SetActive(false);
             }
+
+            RefreshInfoVisual();
+        }
+
+        private void RefreshInfoVisual()
+        {
+            Color targetColor = ResolveTargetColor();
+            string symbol = ResolveTargetSymbol();
+
+            
+
+            Debug.Log(targetColor);
+
+            if (colorIndicatorRenderer != null)
+            {
+                colorIndicatorRenderer.color = targetColor;
+                colorIndicatorRenderer.gameObject.SetActive(ShouldShowColorIndicator());
+            }
+
+            if (targetColor == normalTargetColor)
+            {
+                colorIndicatorRenderer.gameObject.SetActive(false);
+            }
+
+            if (symbolText != null)
+            {
+                symbolText.text = symbol;
+                symbolText.color = targetColor;
+                symbolText.gameObject.SetActive(!string.IsNullOrEmpty(symbol));
+                colorIndicatorRenderer.gameObject.SetActive(string.IsNullOrEmpty(symbol));
+            }
+        }
+
+        private bool ShouldShowColorIndicator()
+        {
+            if (targetType == TargetType.ColorLocked)
+                return true;
+
+            if (targetType == TargetType.SequenceColorLocked)
+                return true;
+
+            if (targetType == TargetType.SequenceLocked)
+                return true;
+
+            if (targetType == TargetType.Intersection)
+                return true;
+
+            return showNormalTargetSymbol;
+        }
+
+        private Color ResolveTargetColor()
+        {
+            if (targetType == TargetType.ColorLocked)
+                return ResolveLaserColor(requiredColor);
+
+            if (targetType == TargetType.SequenceLocked)
+                return ResolveLaserColor(requiredColor);
+
+            if (targetType == TargetType.SequenceColorLocked)
+                return ResolveLaserColor(requiredColor);
+
+            if (targetType == TargetType.Intersection)
+                return intersectionTargetColor;
+
+            return normalTargetColor;
+        }
+
+        private string ResolveTargetSymbol()
+        {
+            if (targetType == TargetType.SequenceLocked || targetType == TargetType.SequenceColorLocked)
+                return sequenceValue.ToString();
+
+            if (targetType == TargetType.Intersection)
+                return intersectionTargetSymbol;
+
+            return showNormalTargetSymbol ? normalTargetSymbol : "";
+        }
+
+        private Color ResolveLaserColor(LaserColorKind colorKind)
+        {
+            for (int i = 0; i < colorPalette.Count; i++)
+            {
+                if (colorPalette[i] != null && colorPalette[i].colorKind == colorKind)
+                    return colorPalette[i].color;
+            }
+
+            return colorKind switch
+            {
+                LaserColorKind.Red => new Color(1f, 0.2f, 0.2f, 1f),
+                LaserColorKind.Blue => new Color(0.2f, 0.45f, 1f, 1f),
+                LaserColorKind.Green => new Color(0.25f, 1f, 0.35f, 1f),
+                LaserColorKind.Yellow => new Color(1f, 0.9f, 0.2f, 1f),
+                LaserColorKind.Purple => new Color(0.75f, 0.25f, 1f, 1f),
+                LaserColorKind.White => Color.white,
+                _ => normalTargetColor
+            };
         }
     }
 }

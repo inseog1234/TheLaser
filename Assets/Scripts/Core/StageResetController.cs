@@ -1,0 +1,55 @@
+using UnityEngine;
+using Grid;
+using Laser;
+using Player;
+
+namespace Core
+{
+    public class StageResetController : MonoBehaviour
+    {
+        [Header("References")]
+        [SerializeField] private GridManager gridManager;
+        [SerializeField] private PlayerGridController playerGridController;
+        [SerializeField] private PlayerInputReader inputReader;
+        [SerializeField] private LaserRenderer laserRenderer;
+
+        private void Awake()
+        {
+            if (gridManager == null)
+                gridManager = FindFirstObjectByType<GridManager>();
+
+            if (playerGridController == null)
+                playerGridController = FindFirstObjectByType<PlayerGridController>();
+
+            if (inputReader == null)
+                inputReader = FindFirstObjectByType<PlayerInputReader>();
+
+            if (laserRenderer == null)
+                laserRenderer = FindFirstObjectByType<LaserRenderer>();
+        }
+
+        private void OnEnable()
+        {
+            if (inputReader != null)
+                inputReader.ResetPressed += ResetStage;
+        }
+
+        private void OnDisable()
+        {
+            if (inputReader != null)
+                inputReader.ResetPressed -= ResetStage;
+        }
+
+        public void ResetStage()
+        {
+            if (laserRenderer != null)
+                laserRenderer.Clear();
+
+            if (gridManager != null && gridManager.CurrentStageData != null)
+                gridManager.LoadStage(gridManager.CurrentStageData);
+
+            if (playerGridController != null)
+                playerGridController.ResetToStageStartImmediate();
+        }
+    }
+}

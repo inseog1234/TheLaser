@@ -405,13 +405,22 @@ namespace Grid
                 return;
 
             List<GridTarget> hitSequenceTargets = new();
+            List<LaserTargetHit> hitSequenceInfos = new();
 
             for (int i = 0; i < result.TargetHits.Count; i++)
             {
-                GridTarget target = GetTargetAt(result.TargetHits[i].Position);
+                LaserTargetHit hit = result.TargetHits[i];
+                GridTarget target = GetTargetAt(hit.Position);
 
-                if (target != null && target.TargetType == TargetType.SequenceLocked)
+                if (target == null)
+                    continue;
+
+                if (target.TargetType == TargetType.SequenceLocked ||
+                    target.TargetType == TargetType.SequenceColorLocked)
+                {
                     hitSequenceTargets.Add(target);
+                    hitSequenceInfos.Add(hit);
+                }
             }
 
             if (hitSequenceTargets.Count < stageData.sequenceLockPattern.Count)
@@ -421,7 +430,17 @@ namespace Grid
 
             for (int i = 0; i < stageData.sequenceLockPattern.Count; i++)
             {
-                if (hitSequenceTargets[i].SequenceValue != stageData.sequenceLockPattern[i])
+                GridTarget target = hitSequenceTargets[i];
+                LaserTargetHit hit = hitSequenceInfos[i];
+
+                if (target.SequenceValue != stageData.sequenceLockPattern[i])
+                {
+                    matched = false;
+                    break;
+                }
+
+                if (target.TargetType == TargetType.SequenceColorLocked &&
+                    target.RequiredColor != hit.Color)
                 {
                     matched = false;
                     break;

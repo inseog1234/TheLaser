@@ -30,6 +30,11 @@ namespace Grid
         public bool useLensTypeFilter;
         public LensType lensType;
 
+        [Header("Function Symbol")]
+        public SpriteRenderer functionSymbolRenderer;
+        public bool useFunctionSymbolColor;
+        public bool hideFunctionSymbolWhenUnused = true;
+
         [Header("Transform")]
         public bool overrideLocalScale;
         public Vector3 localScale = Vector3.one;
@@ -155,8 +160,6 @@ namespace Grid
             if (objectType != PuzzleObjectType.Mirror)
                 return false;
 
-            // ㄴ/역ㄴ 거울은 현재 4방향 레이저만 반사한다.
-            // 대각선 레이저는 굴절 프리즘으로 다루고, 거울에는 막힌다.
             if (!laserMoveDirection.TryToGridDirection(out GridDirection gridMoveDirection))
                 return false;
 
@@ -290,6 +293,46 @@ namespace Grid
 
             if (entry.overrideLocalScale)
                 visualTransform.localScale = entry.localScale;
+
+            RefreshFunctionSymbol(entry);
+        }
+
+        private void RefreshFunctionSymbol(GridObjectVisualEntry entry)
+        {
+            if (entry == null)
+                return;
+
+            if (entry.functionSymbolRenderer == null)
+                return;
+
+            bool shouldShowSymbol = objectType == PuzzleObjectType.Prism &&
+                                    prismType == PrismType.Color &&
+                                    entry.useFunctionSymbolColor;
+
+            if (entry.hideFunctionSymbolWhenUnused)
+                entry.functionSymbolRenderer.gameObject.SetActive(shouldShowSymbol);
+            else
+                entry.functionSymbolRenderer.gameObject.SetActive(true);
+
+            if (!shouldShowSymbol)
+                return;
+
+            entry.functionSymbolRenderer.color = GetLaserColor(prismColor);
+        }
+
+        private Color GetLaserColor(LaserColorKind colorKind)
+        {
+            return colorKind switch
+            {
+                LaserColorKind.Default => Color.white,
+                LaserColorKind.Red => new Color(1f, 0.15f, 0.15f, 1f),
+                LaserColorKind.Blue => new Color(0.2f, 0.45f, 1f, 1f),
+                LaserColorKind.Green => new Color(0.2f, 1f, 0.35f, 1f),
+                LaserColorKind.Yellow => new Color(1f, 0.9f, 0.15f, 1f),
+                LaserColorKind.Purple => new Color(0.75f, 0.25f, 1f, 1f),
+                LaserColorKind.White => Color.white,
+                _ => Color.white
+            };
         }
 
         private void ApplyRootRotation()
@@ -336,10 +379,13 @@ namespace Grid
 
                 if (entry.useManipulationFilter)
                     score += 10;
+
                 if (entry.useMirrorShapeFilter)
                     score += 10;
+
                 if (entry.usePrismTypeFilter)
                     score += 10;
+
                 if (entry.useLensTypeFilter)
                     score += 10;
 
@@ -357,11 +403,16 @@ namespace Grid
         {
             for (int i = 0; i < visualEntries.Count; i++)
             {
-                if (visualEntries[i] == null)
+                GridObjectVisualEntry entry = visualEntries[i];
+
+                if (entry == null)
                     continue;
 
-                if (visualEntries[i].visualObject != null)
-                    visualEntries[i].visualObject.SetActive(false);
+                if (entry.functionSymbolRenderer != null && entry.hideFunctionSymbolWhenUnused)
+                    entry.functionSymbolRenderer.gameObject.SetActive(false);
+
+                if (entry.visualObject != null)
+                    entry.visualObject.SetActive(false);
             }
         }
     }

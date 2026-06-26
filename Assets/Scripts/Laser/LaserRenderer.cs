@@ -21,8 +21,6 @@ namespace Laser
         [SerializeField] private Transform laserTileParent;
 
         [Header("Color")]
-        [SerializeField] private bool overrideAllLaserColorWhenAnyTargetReached = true;
-        [SerializeField] private Color reachedTargetLaserColor = new Color(0.3f, 1f, 0.35f, 1f);
         [SerializeField] private List<LaserColorVisual> colorPalette = new();
 
         [Header("Option")]
@@ -66,7 +64,7 @@ namespace Laser
                 tile.transform.rotation = Quaternion.identity;
                 tile.name = $"LaserTile_{node.NodeType}_{node.Position}_Beam{node.BeamId}";
 
-                Color color = ResolveColor(node.Color, result.ReachedTarget);
+                Color color = ResolveColor(node.Color);
                 tile.SetNode(node, color);
 
                 activeTiles.Add(tile);
@@ -84,11 +82,8 @@ namespace Laser
             activeTiles.Clear();
         }
 
-        private Color ResolveColor(LaserColorKind colorKind, bool reachedTarget)
+        private Color ResolveColor(LaserColorKind colorKind)
         {
-            if (overrideAllLaserColorWhenAnyTargetReached && reachedTarget)
-                return reachedTargetLaserColor;
-
             for (int i = 0; i < colorPalette.Count; i++)
             {
                 if (colorPalette[i] != null && colorPalette[i].colorKind == colorKind)

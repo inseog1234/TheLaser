@@ -222,6 +222,18 @@ namespace Player
             objectInteractor.TryRotateObject(gridPosition, facingDirection, false);
         }
 
+        public void ResetToStageStartImmediate()
+        {
+            if (moveCoroutine != null)
+            {
+                StopCoroutine(moveCoroutine);
+                moveCoroutine = null;
+            }
+
+            isMoving = false;
+            InitializeFromStageData();
+        }
+
         private void HandleResetPressed()
         {
         }
