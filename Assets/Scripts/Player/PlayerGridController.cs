@@ -12,6 +12,7 @@ namespace Player
         [SerializeField] private PlayerInputReader inputReader;
         [SerializeField] private PlayerDirectionView directionView;
         [SerializeField] private PlayerObjectInteractor objectInteractor;
+        [SerializeField] private StageTurnHistoryController turnHistoryController;
 
         [Header("Move")]
         [SerializeField] private bool smoothMove = true;
@@ -42,9 +43,7 @@ namespace Player
         private void InitializeFromStageData()
         {
             if (gridManager == null || gridManager.CurrentStageData == null)
-            {
                 return;
-            }
 
             StageData stageData = gridManager.CurrentStageData;
 
@@ -92,6 +91,8 @@ namespace Player
             if (isMoving)
                 return false;
 
+            turnHistoryController?.BeginTurn();
+
             SetFacingDirection(direction);
 
             Vector2Int targetPosition = gridPosition + direction.ToVector();
@@ -99,29 +100,31 @@ namespace Player
             if (gridManager.IsWalkable(targetPosition))
             {
                 SetGridPosition(targetPosition);
+                turnHistoryController?.CommitTurn();
                 return true;
             }
 
             if (gridManager.HasObject(targetPosition))
             {
-                return TryPushForward(direction);
+                bool pushed = TryPushForward(direction);
+
+                if (pushed)
+                {
+                    turnHistoryController?.CommitTurn();
+                    return true;
+                }
             }
 
+            turnHistoryController?.CommitTurn();
             return false;
         }
 
         private bool TryPushForward(GridDirection direction)
         {
             if (objectInteractor == null)
-            {
                 return false;
-            }
 
-            bool pushed = objectInteractor.TryPushObject(
-                gridPosition,
-                direction,
-                out Vector2Int newPlayerPosition
-            );
+            bool pushed = objectInteractor.TryPushObject(gridPosition, direction, out Vector2Int newPlayerPosition);
 
             if (!pushed)
                 return false;
@@ -150,9 +153,7 @@ namespace Player
             if (smoothMove)
             {
                 if (moveCoroutine != null)
-                {
                     StopCoroutine(moveCoroutine);
-                }
 
                 moveCoroutine = StartCoroutine(MoveRoutine(targetWorldPosition));
             }
@@ -187,9 +188,7 @@ namespace Player
         private void RefreshDirectionView()
         {
             if (directionView != null)
-            {
                 directionView.SetDirection(facingDirection);
-            }
         }
 
         private void HandleLaserPressed()
@@ -198,28 +197,48 @@ namespace Player
 
         private void HandleRotateClockwisePressed()
         {
-            if (isMoving)
-                return;
-
-            if (objectInteractor == null)
-            {
-                return;
-            }
-
-            objectInteractor.TryRotateObject(gridPosition, facingDirection, true);
+            TryRotateForwardObject(true);
         }
 
         private void HandleRotateCounterClockwisePressed()
+        {
+            TryRotateForwardObject(false);
+        }
+
+        private void TryRotateForwardObject(bool clockwise)
         {
             if (isMoving)
                 return;
 
             if (objectInteractor == null)
-            {
                 return;
+
+            turnHistoryController?.BeginTurn();
+
+            bool rotated = objectInteractor.TryRotateObject(gridPosition, facingDirection, clockwise);
+
+            if (rotated)
+                turnHistoryController?.CommitTurn();
+            else
+                turnHistoryController?.CancelTurn();
+        }
+
+        public void ApplyRuntimeStateImmediate(Vector2Int newGridPosition, GridDirection newFacingDirection)
+        {
+            if (moveCoroutine != null)
+            {
+                StopCoroutine(moveCoroutine);
+                moveCoroutine = null;
             }
 
-            objectInteractor.TryRotateObject(gridPosition, facingDirection, false);
+            isMoving = false;
+            gridPosition = newGridPosition;
+            facingDirection = newFacingDirection;
+
+            if (gridManager != null)
+                transform.position = gridManager.GridToWorld(gridPosition);
+
+            RefreshDirectionView();
         }
 
         public void ResetToStageStartImmediate()

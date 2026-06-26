@@ -12,6 +12,7 @@ namespace Core
         [SerializeField] private PlayerGridController playerGridController;
         [SerializeField] private PlayerInputReader inputReader;
         [SerializeField] private LaserRenderer laserRenderer;
+        [SerializeField] private StageTurnHistoryController turnHistoryController;
 
         private void Awake()
         {
@@ -26,6 +27,9 @@ namespace Core
 
             if (laserRenderer == null)
                 laserRenderer = FindFirstObjectByType<LaserRenderer>();
+
+            if (turnHistoryController == null)
+                turnHistoryController = FindFirstObjectByType<StageTurnHistoryController>();
         }
 
         private void OnEnable()
@@ -44,6 +48,9 @@ namespace Core
         {
             if (laserRenderer != null)
                 laserRenderer.Clear();
+
+            if (turnHistoryController != null)
+                turnHistoryController.ClearHistory();
 
             if (gridManager != null && gridManager.CurrentStageData != null)
                 gridManager.LoadStage(gridManager.CurrentStageData);

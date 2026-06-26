@@ -888,6 +888,7 @@ GameObject:
   - component: {fileID: 1619004546}
   - component: {fileID: 1619004548}
   - component: {fileID: 1619004549}
+  - component: {fileID: 1619004550}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -989,6 +990,8 @@ MonoBehaviour:
   rotateClockwiseAction: {fileID: -5775517587321203042, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   rotateCounterClockwiseAction: {fileID: -6350655974841732703, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   resetAction: {fileID: -2054422972526365127, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
+  undoAction: {fileID: 7447952859746954750, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
+  redoAction: {fileID: -6290796267743899879, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   inputEnabled: 1
 --- !u!114 &1619004546
 MonoBehaviour:
@@ -1020,6 +1023,7 @@ MonoBehaviour:
   inputReader: {fileID: 1619004545}
   directionView: {fileID: 1619004546}
   objectInteractor: {fileID: 1619004548}
+  turnHistoryController: {fileID: 1619004550}
   smoothMove: 1
   moveDuration: 0.08
   gridPosition: {x: 0, y: 0}
@@ -1053,6 +1057,24 @@ MonoBehaviour:
   playerGridController: {fileID: 1619004547}
   inputReader: {fileID: 1619004545}
   laserRenderer: {fileID: 983199442}
+  turnHistoryController: {fileID: 1619004550}
+--- !u!114 &1619004550
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1619004542}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 165a38a7c53997543a997ebab0e9dae7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Core.StageTurnHistoryController
+  gridManager: {fileID: 1272788211}
+  playerGridController: {fileID: 1619004547}
+  inputReader: {fileID: 1619004545}
+  laserRenderer: {fileID: 983199442}
+  maxTurnCount: 20
 --- !u!1 &1879046498
 GameObject:
   m_ObjectHideFlags: 0

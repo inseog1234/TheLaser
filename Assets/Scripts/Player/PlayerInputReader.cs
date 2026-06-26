@@ -13,6 +13,8 @@ namespace Player
         [SerializeField] private InputActionReference rotateClockwiseAction;
         [SerializeField] private InputActionReference rotateCounterClockwiseAction;
         [SerializeField] private InputActionReference resetAction;
+        [SerializeField] private InputActionReference undoAction;
+        [SerializeField] private InputActionReference redoAction;
 
         [Header("Option")]
         [SerializeField] private bool inputEnabled = true;
@@ -22,6 +24,8 @@ namespace Player
         public event Action RotateClockwisePressed;
         public event Action RotateCounterClockwisePressed;
         public event Action ResetPressed;
+        public event Action UndoPressed;
+        public event Action RedoPressed;
 
         public bool InputEnabled
         {
@@ -57,6 +61,12 @@ namespace Player
 
             if (resetAction != null)
                 resetAction.action.performed += OnResetPerformed;
+
+            if (undoAction != null)
+                undoAction.action.performed += OnUndoPerformed;
+
+            if (redoAction != null)
+                redoAction.action.performed += OnRedoPerformed;
         }
 
         private void UnsubscribeInputActions()
@@ -75,6 +85,12 @@ namespace Player
 
             if (resetAction != null)
                 resetAction.action.performed -= OnResetPerformed;
+
+            if (undoAction != null)
+                undoAction.action.performed -= OnUndoPerformed;
+
+            if (redoAction != null)
+                redoAction.action.performed -= OnRedoPerformed;
         }
 
         private void SetInputActionsEnabled(bool enabled)
@@ -84,6 +100,8 @@ namespace Player
             SetActionEnabled(rotateClockwiseAction, enabled);
             SetActionEnabled(rotateCounterClockwiseAction, enabled);
             SetActionEnabled(resetAction, enabled);
+            SetActionEnabled(undoAction, enabled);
+            SetActionEnabled(redoAction, enabled);
         }
 
         private void SetActionEnabled(InputActionReference actionReference, bool enabled)
@@ -108,16 +126,13 @@ namespace Player
                 return;
 
             GridDirection direction = ConvertVectorToGridDirection(input);
-
             MovePressed?.Invoke(direction);
         }
 
         private GridDirection ConvertVectorToGridDirection(Vector2 input)
         {
             if (Mathf.Abs(input.x) > Mathf.Abs(input.y))
-            {
                 return input.x > 0f ? GridDirection.Right : GridDirection.Left;
-            }
 
             return input.y > 0f ? GridDirection.Up : GridDirection.Down;
         }
@@ -152,6 +167,22 @@ namespace Player
                 return;
 
             ResetPressed?.Invoke();
+        }
+
+        private void OnUndoPerformed(InputAction.CallbackContext context)
+        {
+            if (!inputEnabled)
+                return;
+
+            UndoPressed?.Invoke();
+        }
+
+        private void OnRedoPerformed(InputAction.CallbackContext context)
+        {
+            if (!inputEnabled)
+                return;
+
+            RedoPressed?.Invoke();
         }
     }
 }

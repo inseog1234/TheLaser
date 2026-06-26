@@ -14,24 +14,6 @@ namespace Laser
         [SerializeField] private LaserRenderer laserRenderer;
         [SerializeField] private GridManager gridManager;
 
-        private void Awake()
-        {
-            if (playerGridController == null)
-                playerGridController = FindFirstObjectByType<PlayerGridController>();
-
-            if (inputReader == null)
-                inputReader = FindFirstObjectByType<PlayerInputReader>();
-
-            if (laserSimulator == null)
-                laserSimulator = FindFirstObjectByType<LaserSimulator>();
-
-            if (laserRenderer == null)
-                laserRenderer = FindFirstObjectByType<LaserRenderer>();
-
-            if (gridManager == null)
-                gridManager = FindFirstObjectByType<GridManager>();
-        }
-
         private void OnEnable()
         {
             if (inputReader == null)

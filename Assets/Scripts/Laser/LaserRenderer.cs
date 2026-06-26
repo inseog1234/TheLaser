@@ -30,12 +30,6 @@ namespace Laser
 
         private void Awake()
         {
-            if (gridManager == null)
-                gridManager = FindFirstObjectByType<GridManager>();
-
-            if (tilePool == null)
-                tilePool = FindFirstObjectByType<LaserTilePool>();
-
             if (laserTileParent == null)
             {
                 GameObject parentObject = new GameObject("ActiveLaserTiles");

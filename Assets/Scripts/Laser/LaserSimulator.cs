@@ -41,12 +41,6 @@ namespace Laser
 
         private readonly List<LaserDirection> splitterOutputs = new();
 
-        private void Awake()
-        {
-            if (gridManager == null)
-                gridManager = FindFirstObjectByType<GridManager>();
-        }
-
         public LaserResult Simulate(Vector2Int startPosition, GridDirection startDirection)
         {
             return Simulate(startPosition, LaserDirectionExtensions.FromGridDirection(startDirection));
