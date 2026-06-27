@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Core;
+using Audio;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -117,8 +118,10 @@ namespace LevelEditor
         private TMP_InputField newMoveInput;
         private TMP_Dropdown newPlayerStartDropdown;
         private TMP_Dropdown newHolePositionDropdown;
+        private TMP_Dropdown newBgmDropdown;
         private PlayerStartPreset newPlayerStartPreset = PlayerStartPreset.LeftMiddle;
         private PlayerStartPreset newHolePositionPreset = PlayerStartPreset.Center;
+        private int newBgmIndex;
         private TMP_InputField loadPathInput;
         private TMP_InputField saveDirectoryInput;
         private TMP_InputField saveFileNameInput;
@@ -202,10 +205,15 @@ namespace LevelEditor
 
         public void CreateNewLevel(int width, int height, int laserMaxDistance, int moveLimit, bool useLaserDistanceLimit)
         {
-            CreateNewLevel(width, height, laserMaxDistance, moveLimit, useLaserDistanceLimit, newPlayerStartPreset, "Custom Level");
+            CreateNewLevel(width, height, laserMaxDistance, moveLimit, useLaserDistanceLimit, newPlayerStartPreset, "Custom Level", GetBgmEventPathByIndex(newBgmIndex));
         }
 
         private void CreateNewLevel(int width, int height, int laserMaxDistance, int moveLimit, bool useLaserDistanceLimit, PlayerStartPreset playerStartPreset, string stageName)
+        {
+            CreateNewLevel(width, height, laserMaxDistance, moveLimit, useLaserDistanceLimit, playerStartPreset, stageName, GetBgmEventPathByIndex(newBgmIndex));
+        }
+
+        private void CreateNewLevel(int width, int height, int laserMaxDistance, int moveLimit, bool useLaserDistanceLimit, PlayerStartPreset playerStartPreset, string stageName, string bgmEventPath)
         {
             int finalLaserMaxDistance = Mathf.Max(0, laserMaxDistance);
 
@@ -213,6 +221,7 @@ namespace LevelEditor
             {
                 stageNumber = 1,
                 stageName = string.IsNullOrWhiteSpace(stageName) ? "Custom Level" : stageName.Trim(),
+                bgmEventPath = string.IsNullOrWhiteSpace(bgmEventPath) ? GetBgmEventPathByIndex(0) : bgmEventPath,
                 width = Mathf.Max(1, width),
                 height = Mathf.Max(1, height),
                 useLaserDistanceLimit = finalLaserMaxDistance > 0,
@@ -544,7 +553,7 @@ namespace LevelEditor
 
         private void BuildNewLevelPopup()
         {
-            newLevelPopup = CreateModalPanel("NewLevelPopup", 560f, 540f, "새 레벨 기본 설정");
+            newLevelPopup = CreateModalPanel("NewLevelPopup", 560f, 610f, "새 레벨 기본 설정");
             newStageNameInput = AddInputRow(newLevelPopup, "스테이지 이름", "New Level", null);
             newWidthInput = AddInputRow(newLevelPopup, "가로 칸 길이", defaultWidth.ToString(), null);
             newHeightInput = AddInputRow(newLevelPopup, "세로 칸 길이", defaultHeight.ToString(), null);
@@ -552,6 +561,7 @@ namespace LevelEditor
             newMoveInput = AddInputRow(newLevelPopup, "이동 제한 행동 수", defaultMoveLimit.ToString(), null);
             newPlayerStartDropdown = AddDropdownRow(newLevelPopup, "플레이어 위치", PlayerStartPresetNames(), (int)newPlayerStartPreset, index => newPlayerStartPreset = (PlayerStartPreset)index);
             newHolePositionDropdown = AddDropdownRow(newLevelPopup, "구멍 위치", PlayerStartPresetNames(), (int)newHolePositionPreset, index => newHolePositionPreset = (PlayerStartPreset)index);
+            newBgmDropdown = AddDropdownRow(newLevelPopup, "BGM", BgmDisplayNames(), newBgmIndex, index => newBgmIndex = Mathf.Clamp(index, 0, BgmDisplayNames().Count - 1));
             TMP_Text info = AddText(newLevelPopup, "레이저 최대 길이와 이동 제한은 0이면 제한 없음", 17, TextAlignmentOptions.Left, new Color(0.8f, 0.86f, 0.95f, 1f));
             info.enableWordWrapping = false;
             AddButton(newLevelPopup, "완료", CompleteNewLevelPopup, 460f, 52f);
@@ -1006,7 +1016,9 @@ namespace LevelEditor
             int height = ParseInt(newHeightInput, defaultHeight);
             int laser = ParseInt(newLaserInput, defaultLaserMaxDistance);
             int move = ParseInt(newMoveInput, defaultMoveLimit);
-            CreateNewLevel(width, height, laser, move, laser > 0, newPlayerStartPreset, stageName);
+            int bgmIndex = newBgmDropdown != null ? newBgmDropdown.value : newBgmIndex;
+            newBgmIndex = Mathf.Clamp(bgmIndex, 0, BgmDisplayNames().Count - 1);
+            CreateNewLevel(width, height, laser, move, laser > 0, newPlayerStartPreset, stageName, GetBgmEventPathByIndex(newBgmIndex));
             editingStageData.clearHolePosition = ResolvePlayerStartPosition(width, height, newHolePositionPreset);
             RebuildStageVisuals();
         }
@@ -2811,6 +2823,12 @@ namespace LevelEditor
             if (newLaserInput != null) newLaserInput.text = defaultLaserMaxDistance.ToString();
             if (newMoveInput != null) newMoveInput.text = defaultMoveLimit.ToString();
             if (newPlayerStartDropdown != null) newPlayerStartDropdown.value = (int)newPlayerStartPreset;
+            newBgmIndex = FindBgmIndex(editingStageData != null ? editingStageData.bgmEventPath : string.Empty);
+            if (newBgmDropdown != null)
+            {
+                newBgmDropdown.value = newBgmIndex;
+                newBgmDropdown.RefreshShownValue();
+            }
             if (newHolePositionDropdown != null) newHolePositionDropdown.value = (int)newHolePositionPreset;
             newLevelPopup.gameObject.SetActive(true);
         }
@@ -3019,6 +3037,65 @@ namespace LevelEditor
             colors.selectedColor = Color.white;
             toggle.colors = colors;
             return toggle;
+        }
+
+        private List<string> BgmDisplayNames()
+        {
+            return new List<string>
+            {
+                "Chapter01.mp3",
+                "Chapter02.mp3",
+                "Chapter03.mp3",
+                "Chapter04.mp3",
+                "Chapter05.mp3",
+                "Chapter06.mp3",
+                "Chapter07.mp3",
+                "Chapter08.mp3",
+                "Chapter09.mp3",
+                "Chapter10.mp3",
+                "EditorBGM.mp3"
+            };
+        }
+
+        private List<string> BgmEventPaths()
+        {
+            return new List<string>
+            {
+                FmodRuntimeAudio.BgmChapter01,
+                FmodRuntimeAudio.BgmChapter02,
+                FmodRuntimeAudio.BgmChapter03,
+                FmodRuntimeAudio.BgmChapter04,
+                FmodRuntimeAudio.BgmChapter05,
+                FmodRuntimeAudio.BgmChapter06,
+                FmodRuntimeAudio.BgmChapter07,
+                FmodRuntimeAudio.BgmChapter08,
+                FmodRuntimeAudio.BgmChapter09,
+                FmodRuntimeAudio.BgmChapter10,
+                FmodRuntimeAudio.BgmEditor
+            };
+        }
+
+        private string GetBgmEventPathByIndex(int index)
+        {
+            List<string> paths = BgmEventPaths();
+            if (paths.Count <= 0)
+                return string.Empty;
+
+            return paths[Mathf.Clamp(index, 0, paths.Count - 1)];
+        }
+
+        private int FindBgmIndex(string eventPath)
+        {
+            string normalized = FmodRuntimeAudio.NormalizeEventPath(eventPath);
+            List<string> paths = BgmEventPaths();
+
+            for (int i = 0; i < paths.Count; i++)
+            {
+                if (string.Equals(paths[i], normalized, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+
+            return 0;
         }
 
         private List<string> PlayerStartPresetNames()

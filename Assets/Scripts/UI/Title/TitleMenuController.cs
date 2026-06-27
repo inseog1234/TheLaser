@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Core;
+using Audio;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -30,6 +31,7 @@ namespace UI.Title
         private RectTransform customLevelPopup;
         private RectTransform settingsPopup;
         private string selectedCustomLevelPath;
+        private FmodRuntimeAudio audioController;
 
         private void Awake()
         {
@@ -37,6 +39,10 @@ namespace UI.Title
             StageFilePaths.EnsureDefaultDirectories();
             font = Resources.Load<TMP_FontAsset>("Font/TMP/PF스타더스트 3");
             whiteSprite = CreateWhiteSprite();
+            audioController = FindFirstObjectByType<FmodRuntimeAudio>();
+            if (audioController == null)
+                audioController = gameObject.AddComponent<FmodRuntimeAudio>();
+            audioController.ApplySavedVolumes();
             BuildUI();
         }
 
@@ -189,7 +195,13 @@ namespace UI.Title
         {
             AddText(parent, label, 20, TextAlignmentOptions.Left, Color.white, false);
             Slider slider = CreateSlider(parent, PlayerPrefs.GetFloat(key, defaultValue));
-            slider.onValueChanged.AddListener(value => { PlayerPrefs.SetFloat(key, value); PlayerPrefs.Save(); });
+            slider.onValueChanged.AddListener(value =>
+            {
+                PlayerPrefs.SetFloat(key, value);
+                PlayerPrefs.Save();
+                if (audioController != null)
+                    audioController.ApplySavedVolumes();
+            });
         }
 
         private List<StageEntry> LoadBuiltInStageEntries()

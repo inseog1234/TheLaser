@@ -16,7 +16,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &3316272217357765194
 Transform:
   m_ObjectHideFlags: 0
@@ -343,6 +343,8 @@ MonoBehaviour:
   requiredColor: 0
   sequenceValue: 1
   detectionRadius: 0.25
+  requiredIntersectionCount: 2
+  intersectionColors: 
   requireDifferentColors: 0
   stopLaserOnHit: 1
   isActivated: 1

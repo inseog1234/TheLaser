@@ -68,6 +68,27 @@ namespace Core
             yield return Fade(0f, fadeTime);
         }
 
+
+        public void LoadSceneFromCurrentFade(string sceneName, float fadeInTime = 0.45f)
+        {
+            StartCoroutine(LoadSceneFromCurrentFadeRoutine(sceneName, fadeInTime));
+        }
+
+        private IEnumerator LoadSceneFromCurrentFadeRoutine(string sceneName, float fadeInTime)
+        {
+            if (canvasGroup != null)
+            {
+                canvasGroup.alpha = 1f;
+                canvasGroup.blocksRaycasts = true;
+            }
+
+            AsyncOperation operation = SceneManager.LoadSceneAsync(sceneName);
+            while (operation != null && !operation.isDone)
+                yield return null;
+
+            yield return Fade(0f, fadeInTime);
+        }
+
         public IEnumerator Fade(float targetAlpha, float duration)
         {
             if (canvasGroup == null)

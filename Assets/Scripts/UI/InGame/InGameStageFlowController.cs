@@ -1,9 +1,11 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using Audio;
 using Core;
 using Grid;
+using Laser;
 using Player;
 using TMPro;
 using UnityEngine;
@@ -25,6 +27,7 @@ namespace UI.InGame
         [SerializeField] private GridManager gridManager;
         [SerializeField] private PlayerGridController playerController;
         [SerializeField] private PlayerInputReader inputReader;
+        [SerializeField] private LaserShooter laserShooter;
         [SerializeField] private FmodRuntimeAudio audioController;
 
         private TMP_FontAsset font;
@@ -44,6 +47,8 @@ namespace UI.InGame
         private bool tutorialOpen;
         private bool isJumpingIntoHole;
         private int tutorialPageIndex;
+        private int lastPauseInputFrame = -1;
+        private int lastInteractInputFrame = -1;
 
         private void Awake()
         {
@@ -57,8 +62,15 @@ namespace UI.InGame
         private IEnumerator Start()
         {
             yield return null;
+            EnsureReferences();
             LoadRequestedStageIfNeeded();
             currentStage = gridManager != null ? gridManager.CurrentStageData : null;
+
+            if (audioController != null)
+                audioController.ApplySavedVolumes();
+
+            if (laserShooter != null)
+                laserShooter.RefreshLaserRemainingText(null);
 
             if (gridManager != null)
                 gridManager.StageSolved += HandleStageSolved;
@@ -107,9 +119,14 @@ namespace UI.InGame
             if (gridManager == null) gridManager = FindFirstObjectByType<GridManager>();
             if (playerController == null) playerController = FindFirstObjectByType<PlayerGridController>();
             if (inputReader == null) inputReader = FindFirstObjectByType<PlayerInputReader>();
+            if (laserShooter == null) laserShooter = FindFirstObjectByType<LaserShooter>();
             if (audioController == null)
             {
-                audioController = FindFirstObjectByType<FmodRuntimeAudio>();
+                audioController = FmodRuntimeAudio.Instance;
+
+                if (audioController == null)
+                    audioController = FindFirstObjectByType<FmodRuntimeAudio>();
+
                 if (audioController == null)
                     audioController = gameObject.AddComponent<FmodRuntimeAudio>();
             }
@@ -269,6 +286,26 @@ namespace UI.InGame
                 renderers[i].enabled = enabled;
         }
 
+        public void ResetRuntimeStateAfterStageReset()
+        {
+            stageSolved = false;
+            isJumpingIntoHole = false;
+            pauseOpen = false;
+            tutorialOpen = false;
+            tutorialPageIndex = 0;
+            Time.timeScale = 1f;
+
+            if (holeInteractText != null)
+                holeInteractText.gameObject.SetActive(false);
+
+            currentStage = gridManager != null ? gridManager.CurrentStageData : currentStage;
+            RefreshIntroText();
+            HideAllPopups();
+
+            if (playerController != null)
+                playerController.SetControlsEnabled(true);
+        }
+
         private void HandleStageSolved()
         {
             if (stageSolved)
@@ -316,6 +353,11 @@ namespace UI.InGame
 
         private void HandleInteractPressed()
         {
+            if (lastInteractInputFrame == Time.frameCount)
+                return;
+
+            lastInteractInputFrame = Time.frameCount;
+
             if (!stageSolved || playerController == null || gridManager == null || isJumpingIntoHole)
                 return;
 
@@ -344,6 +386,9 @@ namespace UI.InGame
                 player.localScale = Vector3.Lerp(startScale, Vector3.zero, t);
                 yield return null;
             }
+            if (audioController != null)
+                audioController.PlaySfx(FmodRuntimeAudio.SfxStageClear);
+
             yield return SceneFadeController.Instance.Fade(1f, 0.35f);
             StageProgressManager.MarkCleared(currentStage);
             LoadNextStageOrReturnTitle();
@@ -353,7 +398,9 @@ namespace UI.InGame
         {
             if (GameSceneRequest.IsEditorTestPlay)
             {
-                SceneManager.LoadScene(GameSceneRequest.ReturnSceneName);
+                string returnScene = string.IsNullOrWhiteSpace(GameSceneRequest.ReturnSceneName) ? "LevelEditor" : GameSceneRequest.ReturnSceneName;
+                GameSceneRequest.Clear();
+                SceneFadeController.Instance.LoadSceneFromCurrentFade(returnScene, 0.35f);
                 return;
             }
 
@@ -362,28 +409,51 @@ namespace UI.InGame
             {
                 GameSceneRequest.RequestBuiltInStage(nextStage);
                 string activeSceneName = SceneManager.GetActiveScene().name;
-                SceneManager.LoadScene(string.IsNullOrWhiteSpace(activeSceneName) ? gameSceneName : activeSceneName);
+                SceneFadeController.Instance.LoadSceneFromCurrentFade(string.IsNullOrWhiteSpace(activeSceneName) ? gameSceneName : activeSceneName, 0.35f);
                 return;
             }
 
             GameSceneRequest.Clear();
-            SceneManager.LoadScene(titleSceneName);
+            SceneFadeController.Instance.LoadSceneFromCurrentFade(titleSceneName, 0.35f);
         }
 
         private string FindNextBuiltInStagePath()
         {
-            if (currentStage == null || GameSceneRequest.IsCustomLevel || !Directory.Exists(StageFilePaths.BuiltInLevelsDirectory))
+            if (currentStage == null || GameSceneRequest.IsCustomLevel)
                 return string.Empty;
 
-            string[] files = Directory.GetFiles(StageFilePaths.BuiltInLevelsDirectory, "*.tls", SearchOption.TopDirectoryOnly);
-            for (int i = 0; i < files.Length; i++)
-            {
-                if (!StageBinarySerializer.TryLoad(files[i], out StageData data))
-                    continue;
+            int nextStageIndex = currentStage.stageIndexInChapter + 1;
+            List<string> searchDirectories = new List<string>();
 
-                if (data.chapterIndex == currentStage.chapterIndex && data.stageIndexInChapter == currentStage.stageIndexInChapter + 1)
-                    return files[i];
+            if (!string.IsNullOrWhiteSpace(GameSceneRequest.StageFilePath))
+            {
+                string currentDirectory = Path.GetDirectoryName(GameSceneRequest.StageFilePath);
+                if (!string.IsNullOrWhiteSpace(currentDirectory) && Directory.Exists(currentDirectory))
+                    searchDirectories.Add(currentDirectory);
             }
+
+            if (Directory.Exists(StageFilePaths.BuiltInLevelsDirectory) && !searchDirectories.Contains(StageFilePaths.BuiltInLevelsDirectory))
+                searchDirectories.Add(StageFilePaths.BuiltInLevelsDirectory);
+
+            for (int d = 0; d < searchDirectories.Count; d++)
+            {
+                string directPath = Path.Combine(searchDirectories[d], $"Chapter{currentStage.chapterIndex:00}_Stage{nextStageIndex:00}.tls");
+                if (File.Exists(directPath))
+                    return directPath;
+
+                string[] files = Directory.GetFiles(searchDirectories[d], "*.tls", SearchOption.TopDirectoryOnly);
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+
+                for (int i = 0; i < files.Length; i++)
+                {
+                    if (!StageBinarySerializer.TryLoad(files[i], out StageData data))
+                        continue;
+
+                    if (data.chapterIndex == currentStage.chapterIndex && data.stageIndexInChapter == nextStageIndex)
+                        return files[i];
+                }
+            }
+
             return string.Empty;
         }
 
@@ -420,8 +490,20 @@ namespace UI.InGame
 
         private void HandlePausePressed()
         {
-            if (tutorialOpen || isJumpingIntoHole)
+            if (lastPauseInputFrame == Time.frameCount)
                 return;
+
+            lastPauseInputFrame = Time.frameCount;
+
+            if (isJumpingIntoHole)
+                return;
+
+            if (tutorialOpen)
+            {
+                tutorialOpen = false;
+                if (tutorialPopup != null)
+                    tutorialPopup.gameObject.SetActive(false);
+            }
 
             if (pauseOpen) ClosePause(); else ShowPausePopup();
         }
@@ -432,7 +514,16 @@ namespace UI.InGame
             Time.timeScale = 0f;
             if (playerController != null) playerController.SetControlsEnabled(false);
             HideAllPopups();
-            (GameSceneRequest.IsEditorTestPlay ? testPausePopup : pausePopup).gameObject.SetActive(true);
+
+            RectTransform targetPopup = GameSceneRequest.IsEditorTestPlay ? testPausePopup : pausePopup;
+            if (targetPopup == null)
+                targetPopup = pausePopup;
+
+            if (targetPopup != null)
+                targetPopup.gameObject.SetActive(true);
+
+            if (audioController != null)
+                audioController.PlaySfx(FmodRuntimeAudio.SfxUiOpen);
         }
 
         private void ClosePause()
@@ -441,6 +532,9 @@ namespace UI.InGame
             Time.timeScale = 1f;
             HideAllPopups();
             if (playerController != null && !tutorialOpen) playerController.SetControlsEnabled(true);
+
+            if (audioController != null)
+                audioController.PlaySfx(FmodRuntimeAudio.SfxUiClose);
         }
 
         private void ShowSettingsPopup()
@@ -486,7 +580,13 @@ namespace UI.InGame
         {
             AddText(parent, label, 20, TextAlignmentOptions.Left, Color.white, false);
             Slider slider = CreateSlider(parent, PlayerPrefs.GetFloat(key, 1f));
-            slider.onValueChanged.AddListener(value => { PlayerPrefs.SetFloat(key, value); PlayerPrefs.Save(); });
+            slider.onValueChanged.AddListener(value =>
+            {
+                PlayerPrefs.SetFloat(key, value);
+                PlayerPrefs.Save();
+                if (audioController != null)
+                    audioController.ApplySavedVolumes();
+            });
         }
 
         private RectTransform CreateModal(string name, float width, float height, string title)
