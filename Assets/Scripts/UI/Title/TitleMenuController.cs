@@ -96,7 +96,7 @@ namespace UI.Title
 
         private void BuildStagePopup()
         {
-            stagePopup = CreateModal("StageListPopup", 960f, 760f, "스테이지 목록");
+            stagePopup = CreateModal("StageListPopup", 480f, 760f, "스테이지 목록");
             ScrollRect scrollRect = CreateScroll(stagePopup, "StageScroll", out RectTransform content);
             scrollRect.GetComponent<LayoutElement>().preferredHeight = 600f;
 
@@ -118,7 +118,7 @@ namespace UI.Title
             for (int i = 0; i < keys.Count; i++)
                 AddChapterBlock(content, keys[i], byChapter[keys[i]]);
 
-            AddButton(stagePopup, "닫기", HideAllPopups, 840f, 48f);
+            AddButton(stagePopup, "닫기", HideAllPopups, 420f, 48f);
         }
 
         private void AddChapterBlock(RectTransform parent, int chapterIndex, List<StageEntry> stages)
@@ -126,7 +126,9 @@ namespace UI.Title
             stages.Sort((a, b) => a.Data.stageIndexInChapter.CompareTo(b.Data.stageIndexInChapter));
             RectTransform block = CreatePanel($"Chapter_{chapterIndex}", parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(0.06f, 0.07f, 0.095f, 0.95f));
             AddVertical(block, 12, 12, 12, 12, 8).childForceExpandHeight = false;
-            block.gameObject.AddComponent<LayoutElement>().preferredHeight = stages.Count <= 5 ? 145f : 205f;
+            int rowCount = Mathf.Max(1, Mathf.CeilToInt(stages.Count / 5f));
+            float stageButtonAreaHeight = rowCount * 46f + Mathf.Max(0, rowCount - 1) * 10f;
+            block.gameObject.AddComponent<LayoutElement>().preferredHeight = 88f + stageButtonAreaHeight;
             string chapterName = stages.Count > 0 ? stages[0].Data.chapterName : $"챕터 {chapterIndex}";
             AddText(block, $"챕터 {chapterIndex}\n{chapterName}", 24, TextAlignmentOptions.Left, Color.white, true);
 
@@ -136,7 +138,7 @@ namespace UI.Title
             grid.spacing = new Vector2(10f, 10f);
             grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             grid.constraintCount = 5;
-            row.gameObject.AddComponent<LayoutElement>().preferredHeight = stages.Count <= 5 ? 58f : 118f;
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = stageButtonAreaHeight;
 
             for (int i = 0; i < stages.Count; i++)
             {

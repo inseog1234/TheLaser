@@ -18,6 +18,7 @@ namespace Laser
         public bool HitObjectAndStopped { get; private set; }
         public bool LoopDetected { get; private set; }
         public bool DistanceEnded { get; private set; }
+        public bool HasExactDistanceTargetHit { get; private set; }
 
         public Vector2Int? TargetPosition { get; private set; }
         public Vector2Int? StopPosition { get; private set; }
@@ -25,6 +26,24 @@ namespace Laser
         public void AddNode(LaserPathNode node)
         {
             PathNodes.Add(node);
+        }
+
+        public void RegisterBeamStartStepCount(int beamId, int startStepCount)
+        {
+            int safeStartStepCount = Mathf.Max(0, startStepCount);
+
+            if (!beamStepCounts.ContainsKey(beamId))
+                beamStepCounts.Add(beamId, safeStartStepCount);
+            else if (beamStepCounts[beamId] < safeStartStepCount)
+                beamStepCounts[beamId] = safeStartStepCount;
+
+            if (beamStepCounts[beamId] > MaxBeamStepCount)
+                MaxBeamStepCount = beamStepCounts[beamId];
+        }
+
+        public int GetBeamStepCount(int beamId)
+        {
+            return beamStepCounts.TryGetValue(beamId, out int stepCount) ? stepCount : 0;
         }
 
         public void AddSegment(LaserSegment segment)
@@ -44,6 +63,11 @@ namespace Laser
             TargetHits.Add(hit);
             ReachedTarget = true;
             TargetPosition = hit.Position;
+        }
+
+        public void MarkExactDistanceTargetHit()
+        {
+            HasExactDistanceTargetHit = true;
         }
 
         public void SetReachedTarget(Vector2Int position)

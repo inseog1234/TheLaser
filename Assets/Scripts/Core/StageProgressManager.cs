@@ -30,9 +30,6 @@ namespace Core
             if (chapterIndex <= 0)
                 return 0;
 
-            if (chapterIndex == 1)
-                return 10;
-
             return 5;
         }
 

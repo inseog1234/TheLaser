@@ -472,7 +472,7 @@ namespace Grid
             if (stageData == null || !stageData.useLaserDistanceLimit || stageData.laserMaxDistance <= 0)
                 return true;
 
-            return result != null && result.MaxBeamStepCount == stageData.laserMaxDistance;
+            return result != null && (result.MaxBeamStepCount == stageData.laserMaxDistance || result.HasExactDistanceTargetHit);
         }
 
         private void SetAllTargetsFailed()

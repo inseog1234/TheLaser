@@ -14,14 +14,16 @@ namespace Laser
             public LaserDirection Direction;
             public LaserColorKind Color;
             public int RemainingDistance;
+            public int StartStepCount;
 
-            public LaserBeam(int beamId, Vector2Int position, LaserDirection direction, LaserColorKind color, int remainingDistance)
+            public LaserBeam(int beamId, Vector2Int position, LaserDirection direction, LaserColorKind color, int remainingDistance, int startStepCount)
             {
                 BeamId = beamId;
                 Position = position;
                 Direction = direction;
                 Color = color;
                 RemainingDistance = remainingDistance;
+                StartStepCount = Mathf.Max(0, startStepCount);
             }
         }
 
@@ -64,7 +66,7 @@ namespace Laser
             int nextBeamId = 0;
             int remainingDistance = runtimeUseDistanceLimit ? maxDistance : -1;
 
-            beamQueue.Enqueue(new LaserBeam(nextBeamId++, startPosition, startDirection, defaultColor, remainingDistance));
+            beamQueue.Enqueue(new LaserBeam(nextBeamId++, startPosition, startDirection, defaultColor, remainingDistance, 0));
 
             while (beamQueue.Count > 0)
             {
@@ -90,6 +92,12 @@ namespace Laser
             StageData stageData = gridManager.CurrentStageData;
             useLimit = stageData.useLaserDistanceLimit;
             maxDistance = stageData.laserMaxDistance;
+        }
+
+        private bool TryDetectTouchingTargetOnLaserEnd(LaserResult result, Vector2Int endPosition, LaserDirection endDirection, LaserColorKind color, int beamId)
+        {
+            Vector2Int forwardPosition = endPosition + endDirection.ToVector();
+            return TryReachTargetFromLaserEnd(result, endPosition, forwardPosition, endDirection, color, beamId);
         }
 
         private bool TryDetectAdjacentTargetOnLaserEnd(LaserResult result, Vector2Int endPosition, LaserDirection endDirection, LaserColorKind color, int beamId)
@@ -146,6 +154,7 @@ namespace Laser
             LaserColorKind currentColor = beam.Color;
             int remainingDistance = beam.RemainingDistance;
 
+            result.RegisterBeamStartStepCount(beam.BeamId, beam.StartStepCount);
             result.AddNode(LaserPathNode.Start(currentPosition, currentDirection, currentColor, beam.BeamId));
 
             visitedStates.Add(new LaserBeamState(currentPosition, currentDirection, currentColor));
@@ -154,6 +163,12 @@ namespace Laser
             {
                 if (runtimeUseDistanceLimit && remainingDistance <= 0)
                 {
+                    if (TryDetectTouchingTargetOnLaserEnd(result, currentPosition, currentDirection, currentColor, beam.BeamId))
+                    {
+                        result.MarkExactDistanceTargetHit();
+                        break;
+                    }
+
                     if (step == 0)
                         result.AddNode(LaserPathNode.StartEnd(currentPosition, currentDirection, currentColor, beam.BeamId));
                     else
@@ -210,6 +225,8 @@ namespace Laser
                 {
                     result.AddNode(LaserPathNode.Target(nextPosition, currentDirection, currentColor, beam.BeamId));
                     result.AddTargetHit(new LaserTargetHit(nextPosition, currentColor, beam.BeamId, result.TargetHits.Count));
+                    if (runtimeUseDistanceLimit && remainingDistance == 0)
+                        result.MarkExactDistanceTargetHit();
 
                     GridTarget target = gridManager.GetTargetAt(nextPosition);
                     bool stopLaserOnHit = target == null || target.StopLaserOnHit;
@@ -223,7 +240,7 @@ namespace Laser
 
                     currentPosition = nextPosition;
 
-                    if (runtimeUseDistanceLimit && remainingDistance <= 1)
+                    if (runtimeUseDistanceLimit && remainingDistance <= 0)
                     {
                         AddEndNode(result, currentPosition, currentDirection, currentColor, beam.BeamId);
                         result.SetDistanceEnded(currentPosition);
@@ -339,7 +356,8 @@ namespace Laser
                         break;
 
                     int beamId = nextBeamId++;
-                    beamQueue.Enqueue(new LaserBeam(beamId, prismPosition, splitterOutputs[i], currentColor, remainingDistance));
+                    int splitStartStepCount = result.GetBeamStepCount(currentBeamId);
+                    beamQueue.Enqueue(new LaserBeam(beamId, prismPosition, splitterOutputs[i], currentColor, remainingDistance, splitStartStepCount));
                 }
 
                 // 현재 빔은 여기서 종료되고, 분기 큐의 빔들이 이어서 진행한다.

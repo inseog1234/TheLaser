@@ -31,6 +31,9 @@ MonoBehaviour:
   - m_enabled: 1
     m_path: Assets/Scenes/LevelEditor.unity
     m_guid: 31f602483b60514438d567fca1fa69fa
+  - m_enabled: 1
+    m_path: Assets/Scenes/Game.unity
+    m_guid: 04ac50061b75f404badd7f04d232c276
   m_HasScriptingDefines: 0
   m_ScriptingDefines: []
   m_PlayerSettingsYaml:

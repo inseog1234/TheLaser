@@ -335,7 +335,7 @@ MonoBehaviour:
   defaultHeight: 8
   defaultLaserMaxDistance: 8
   defaultMoveLimit: 0
-  allowBuiltInLevelLoad: 0
+  allowBuiltInLevelLoad: 1
   editorCamera: {fileID: 100002}
   cameraPanSpeed: 0.015
   cameraZoomSpeed: 8

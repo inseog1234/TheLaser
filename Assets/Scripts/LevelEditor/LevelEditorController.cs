@@ -316,6 +316,7 @@ namespace LevelEditor
             editingStageData = loadedStageData;
             currentFilePath = fullPath;
             selectedLoadFilePath = fullPath;
+            ApplyLoadedFileAsSaveTarget(fullPath);
             ClearSelection();
             RebuildSequencePattern();
             RebuildStageVisuals();
@@ -346,6 +347,29 @@ namespace LevelEditor
         public void SetLoadFilePath(string filePath)
         {
             selectedLoadFilePath = filePath;
+        }
+
+        private void ApplyLoadedFileAsSaveTarget(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                return;
+
+            string directory = Path.GetDirectoryName(filePath);
+            string fileName = Path.GetFileNameWithoutExtension(filePath);
+
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                selectedSaveDirectory = directory;
+                if (saveDirectoryInput != null)
+                    saveDirectoryInput.SetTextWithoutNotify(selectedSaveDirectory);
+            }
+
+            if (!string.IsNullOrWhiteSpace(fileName))
+            {
+                selectedSaveFileName = fileName;
+                if (saveFileNameInput != null)
+                    saveFileNameInput.SetTextWithoutNotify(selectedSaveFileName);
+            }
         }
 
         public void OpenExportDirectory()
@@ -680,7 +704,9 @@ namespace LevelEditor
 
         private void BuildSavePopup()
         {
-            selectedSaveDirectory = StageFilePaths.MyCustomLevelsDirectory;
+            if (string.IsNullOrWhiteSpace(selectedSaveDirectory))
+                selectedSaveDirectory = StageFilePaths.MyCustomLevelsDirectory;
+
             savePopup = CreateModalPanel("SavePopup", 700f, 430f, "저장하기");
             saveDirectoryInput = AddInputRow(savePopup, "폴더 경로", selectedSaveDirectory, value => selectedSaveDirectory = value);
             saveFileNameInput = AddInputRow(savePopup, "파일 이름", selectedSaveFileName, value => selectedSaveFileName = value);
