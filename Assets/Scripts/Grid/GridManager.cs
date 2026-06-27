@@ -8,8 +8,16 @@ namespace Grid
     public class GridManager : MonoBehaviour
     {
         [Header("Stage")]
-        [SerializeField] private StageData stageData;
+        [SerializeField] private StageData stageData = new StageData();
         [SerializeField] private bool loadOnAwake = true;
+
+        [Header("Binary Stage Load")]
+        [SerializeField] private bool loadStageFromBinaryOnAwake = false;
+        [SerializeField] private bool useBuiltInLevelsDirectory = true;
+        [SerializeField] private string stageFileName = "Stage_01.tls";
+        [SerializeField] private string customStageFilePath;
+
+        private string currentStageFilePath;
 
         [Header("Grid World Setting")]
         [SerializeField] private float cellSize = 1f;
@@ -58,8 +66,61 @@ namespace Grid
 
         private void Awake()
         {
-            if (loadOnAwake && stageData != null)
+            StageFilePaths.EnsureDefaultDirectories();
+
+            if (!loadOnAwake)
+                return;
+
+            if (loadStageFromBinaryOnAwake)
+            {
+                string path = ResolveBinaryStagePath();
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    LoadStageFromFile(path);
+                    return;
+                }
+            }
+
+            if (stageData != null)
                 LoadStage(stageData);
+        }
+
+        public void LoadStageFromFile(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                return;
+
+            if (!StageBinarySerializer.TryLoad(filePath, out StageData loadedStageData))
+                return;
+
+            currentStageFilePath = filePath;
+            LoadStage(loadedStageData);
+        }
+
+        public void ReloadCurrentStageFromFile()
+        {
+            if (string.IsNullOrWhiteSpace(currentStageFilePath))
+                return;
+
+            LoadStageFromFile(currentStageFilePath);
+        }
+
+        public void SaveCurrentStageToFile(string filePath)
+        {
+            if (stageData == null || string.IsNullOrWhiteSpace(filePath))
+                return;
+
+            StageBinarySerializer.Save(stageData, filePath);
+            currentStageFilePath = filePath;
+        }
+
+        private string ResolveBinaryStagePath()
+        {
+            if (!string.IsNullOrWhiteSpace(customStageFilePath))
+                return customStageFilePath;
+
+            string directory = useBuiltInLevelsDirectory ? StageFilePaths.BuiltInLevelsDirectory : StageFilePaths.MyCustomLevelsDirectory;
+            return System.IO.Path.Combine(directory, StageFilePaths.NormalizeStageFileName(stageFileName));
         }
 
         public void LoadStage(StageData targetStageData)
@@ -482,7 +543,110 @@ namespace Grid
 
                 if (activated && sensor.ActivateTransformZone && !string.IsNullOrWhiteSpace(sensor.TransformZoneId))
                     ApplyTransformZone(sensor.TransformZoneId);
+
+                if (activated)
+                    ApplyDistanceSensorTriggers(sensor);
             }
+        }
+
+        private void ApplyDistanceSensorTriggers(GridDistanceSensor sensor)
+        {
+            if (sensor == null || sensor.Triggers == null)
+                return;
+
+            IReadOnlyList<DistanceSensorTriggerData> triggers = sensor.Triggers;
+            for (int i = 0; i < triggers.Count; i++)
+                ApplyDistanceSensorTrigger(triggers[i]);
+        }
+
+        private void ApplyDistanceSensorTrigger(DistanceSensorTriggerData trigger)
+        {
+            if (trigger == null)
+                return;
+
+            switch (trigger.triggerKind)
+            {
+                case DistanceSensorTriggerKind.MoveWall:
+                    TryMoveFixedWall(trigger.wallPosition, trigger.wallMoveTargetPosition);
+                    break;
+
+                case DistanceSensorTriggerKind.ChangePrismDirection:
+                    TrySetObjectDirectionAt(trigger.prismPosition, trigger.prismDirection);
+                    break;
+
+                case DistanceSensorTriggerKind.ChangeMirrorState:
+                    TrySetMirrorStateAt(trigger.mirrorPosition, trigger.mirrorDirection, trigger.mirrorShape);
+                    break;
+
+                case DistanceSensorTriggerKind.ActivateTransformZone:
+                    ApplyTransformZone(trigger.transformZoneId);
+                    break;
+            }
+        }
+
+        public bool TrySetObjectDirectionAt(Vector2Int position, GridDirection direction)
+        {
+            GridObject obj = GetObjectAt(position);
+            if (obj == null)
+                return false;
+
+            obj.SetDirection(direction);
+            return true;
+        }
+
+
+
+        public bool TrySetMirrorStateAt(Vector2Int position, GridDirection direction, MirrorShape mirrorShape)
+        {
+            GridObject obj = GetObjectAt(position);
+            if (obj == null || obj.ObjectType != PuzzleObjectType.Mirror)
+                return false;
+
+            obj.SetDirection(direction);
+            obj.SetMirrorShape(mirrorShape);
+            return true;
+        }
+
+        public bool TryMoveFixedWall(Vector2Int fromPosition, Vector2Int toPosition)
+        {
+            if (!IsInside(fromPosition) || !IsInside(toPosition) || fromPosition == toPosition)
+                return false;
+
+            if (!HasWall(fromPosition))
+                return false;
+
+            if (HasWall(toPosition) || HasObject(toPosition) || HasTarget(toPosition))
+                return false;
+
+            GridCell fromCell = GetCell(fromPosition);
+            GridCell toCell = GetCell(toPosition);
+
+            if (fromCell == null || toCell == null)
+                return false;
+
+            fromCell.SetCellType(CellType.Empty);
+            toCell.SetCellType(CellType.Wall);
+
+            int wallIndex = stageData.wallPositions.IndexOf(fromPosition);
+            if (wallIndex >= 0)
+                stageData.wallPositions[wallIndex] = toPosition;
+
+            GridObject wallObject = FindSpawnedFixedWallAt(fromPosition);
+            if (wallObject != null)
+                wallObject.SetGridPosition(toPosition, GridToWorld(toPosition));
+
+            return true;
+        }
+
+        private GridObject FindSpawnedFixedWallAt(Vector2Int position)
+        {
+            for (int i = 0; i < spawnedFixedWalls.Count; i++)
+            {
+                if (spawnedFixedWalls[i] != null && spawnedFixedWalls[i].GridPosition == position)
+                    return spawnedFixedWalls[i];
+            }
+
+            return null;
         }
 
         private void EvaluateIntersectionTargets(LaserResult result)
@@ -495,6 +659,8 @@ namespace Grid
                     continue;
 
                 Vector2 targetPoint = new Vector2(target.GridPosition.x, target.GridPosition.y);
+                int requiredCount = Mathf.Clamp(target.RequiredIntersectionCount, 2, 3);
+                int matchedCount = 0;
                 bool activated = false;
 
                 for (int a = 0; a < result.Segments.Count; a++)
@@ -507,13 +673,18 @@ namespace Grid
                         if (segmentA.BeamId == segmentB.BeamId)
                             continue;
 
-                        if (target.RequireDifferentColors && segmentA.Color == segmentB.Color)
-                            continue;
-
                         if (!LaserGeometryUtility.TryGetSegmentIntersection(segmentA.Start, segmentA.End, segmentB.Start, segmentB.End, out Vector2 intersection))
                             continue;
 
-                        if (Vector2.Distance(targetPoint, intersection) <= target.DetectionRadius)
+                        if (Vector2.Distance(targetPoint, intersection) > target.DetectionRadius)
+                            continue;
+
+                        if (!IsIntersectionColorMatched(target, segmentA.Color, segmentB.Color))
+                            continue;
+
+                        matchedCount++;
+
+                        if (matchedCount >= requiredCount - 1)
                         {
                             activated = true;
                             break;
@@ -526,6 +697,61 @@ namespace Grid
 
                 target.SetActivated(activated);
             }
+        }
+
+        private bool IsIntersectionColorMatched(GridTarget target, LaserColorKind colorA, LaserColorKind colorB)
+        {
+            if (target == null)
+                return true;
+
+            IReadOnlyList<LaserColorKind> colors = target.IntersectionColors;
+            if (colors == null || colors.Count <= 0)
+            {
+                if (target.RequireDifferentColors && colorA == colorB)
+                    return false;
+
+                return true;
+            }
+
+            bool aMatched = false;
+            bool bMatched = false;
+
+            for (int i = 0; i < colors.Count; i++)
+            {
+                LaserColorKind required = colors[i];
+
+                if (required == LaserColorKind.Default)
+                    continue;
+
+                if (!aMatched && required == colorA)
+                {
+                    aMatched = true;
+                    continue;
+                }
+
+                if (!bMatched && required == colorB)
+                    bMatched = true;
+            }
+
+            bool hasSpecificColor = false;
+            for (int i = 0; i < colors.Count; i++)
+            {
+                if (colors[i] != LaserColorKind.Default)
+                {
+                    hasSpecificColor = true;
+                    break;
+                }
+            }
+
+            if (!hasSpecificColor)
+            {
+                if (target.RequireDifferentColors && colorA == colorB)
+                    return false;
+
+                return true;
+            }
+
+            return aMatched || bMatched;
         }
 
         public void ApplyTransformZone(string zoneId)
@@ -600,9 +826,14 @@ namespace Grid
             }
         }
 
+        private Vector2Int GetTransformZonePivotCell(GridTransformZone zone)
+        {
+            return zone.Center;
+        }
+
         private Vector2Int TransformPosition(Vector2Int position, GridTransformZone zone)
         {
-            Vector2Int relative = position - zone.Center;
+            Vector2Int relative = position - GetTransformZonePivotCell(zone);
 
             if (zone.ZoneType == TransformZoneType.Rotate90)
             {
@@ -610,7 +841,7 @@ namespace Grid
                     ? new Vector2Int(relative.y, -relative.x)
                     : new Vector2Int(-relative.y, relative.x);
 
-                return zone.Center + rotated;
+                return GetTransformZonePivotCell(zone) + rotated;
             }
 
             if (zone.ZoneType == TransformZoneType.Mirror)
@@ -619,7 +850,7 @@ namespace Grid
                     ? new Vector2Int(-relative.x, relative.y)
                     : new Vector2Int(relative.x, -relative.y);
 
-                return zone.Center + mirrored;
+                return GetTransformZonePivotCell(zone) + mirrored;
             }
 
             return position;

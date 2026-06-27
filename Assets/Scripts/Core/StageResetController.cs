@@ -14,24 +14,6 @@ namespace Core
         [SerializeField] private LaserRenderer laserRenderer;
         [SerializeField] private StageTurnHistoryController turnHistoryController;
 
-        private void Awake()
-        {
-            if (gridManager == null)
-                gridManager = FindFirstObjectByType<GridManager>();
-
-            if (playerGridController == null)
-                playerGridController = FindFirstObjectByType<PlayerGridController>();
-
-            if (inputReader == null)
-                inputReader = FindFirstObjectByType<PlayerInputReader>();
-
-            if (laserRenderer == null)
-                laserRenderer = FindFirstObjectByType<LaserRenderer>();
-
-            if (turnHistoryController == null)
-                turnHistoryController = FindFirstObjectByType<StageTurnHistoryController>();
-        }
-
         private void OnEnable()
         {
             if (inputReader != null)

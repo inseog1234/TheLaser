@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Core;
 
@@ -15,6 +16,7 @@ namespace Grid
         [SerializeField] private float detectionRadius = 0.5f;
         [SerializeField] private bool activateTransformZone;
         [SerializeField] private string transformZoneId;
+        [SerializeField] private List<DistanceSensorTriggerData> triggers = new();
         [SerializeField] private bool isActivated;
 
         public string SensorId => sensorId;
@@ -22,6 +24,7 @@ namespace Grid
         public float DetectionRadius => detectionRadius;
         public bool ActivateTransformZone => activateTransformZone;
         public string TransformZoneId => transformZoneId;
+        public IReadOnlyList<DistanceSensorTriggerData> Triggers => triggers;
         public bool IsActivated => isActivated;
 
         public void Initialize(DistanceSensorData data)
@@ -34,6 +37,7 @@ namespace Grid
             detectionRadius = data.detectionRadius;
             activateTransformZone = data.activateTransformZone;
             transformZoneId = data.transformZoneId;
+            triggers = data.triggers != null ? new List<DistanceSensorTriggerData>(data.triggers) : new List<DistanceSensorTriggerData>();
             SetActivated(false);
         }
 

@@ -39,6 +39,8 @@ namespace Grid
         [SerializeField] private LaserColorKind requiredColor = LaserColorKind.Default;
         [SerializeField] private int sequenceValue = 1;
         [SerializeField] private float detectionRadius = 0.25f;
+        [SerializeField] private int requiredIntersectionCount = 2;
+        [SerializeField] private List<LaserColorKind> intersectionColors = new();
         [SerializeField] private bool requireDifferentColors;
         [SerializeField] private bool stopLaserOnHit = true;
         [SerializeField] private bool isActivated;
@@ -49,6 +51,8 @@ namespace Grid
         public LaserColorKind RequiredColor => requiredColor;
         public int SequenceValue => sequenceValue;
         public float DetectionRadius => detectionRadius;
+        public int RequiredIntersectionCount => requiredIntersectionCount;
+        public IReadOnlyList<LaserColorKind> IntersectionColors => intersectionColors;
         public bool RequireDifferentColors => requireDifferentColors;
         public bool StopLaserOnHit => stopLaserOnHit;
         public bool IsActivated => isActivated;
@@ -66,6 +70,8 @@ namespace Grid
             requiredColor = LaserColorKind.Default;
             sequenceValue = 1;
             detectionRadius = 0.25f;
+            requiredIntersectionCount = 2;
+            intersectionColors = new List<LaserColorKind>();
             requireDifferentColors = false;
             stopLaserOnHit = true;
             SetActivated(false);
@@ -80,6 +86,8 @@ namespace Grid
             requiredColor = data.requiredColor;
             sequenceValue = data.sequenceValue;
             detectionRadius = data.detectionRadius;
+            requiredIntersectionCount = Mathf.Clamp(data.requiredIntersectionCount, 2, 3);
+            intersectionColors = data.intersectionColors != null ? new List<LaserColorKind>(data.intersectionColors) : new List<LaserColorKind>();
             requireDifferentColors = data.requireDifferentColors;
             stopLaserOnHit = data.stopLaserOnHit;
             SetActivated(false);
@@ -124,27 +132,18 @@ namespace Grid
             Color targetColor = ResolveTargetColor();
             string symbol = ResolveTargetSymbol();
 
-            
-
-            Debug.Log(targetColor);
-
             if (colorIndicatorRenderer != null)
             {
                 colorIndicatorRenderer.color = targetColor;
                 colorIndicatorRenderer.gameObject.SetActive(ShouldShowColorIndicator());
             }
 
-            if (targetColor == normalTargetColor)
-            {
-                colorIndicatorRenderer.gameObject.SetActive(false);
-            }
 
             if (symbolText != null)
             {
                 symbolText.text = symbol;
                 symbolText.color = targetColor;
                 symbolText.gameObject.SetActive(!string.IsNullOrEmpty(symbol));
-                colorIndicatorRenderer.gameObject.SetActive(string.IsNullOrEmpty(symbol));
             }
         }
 

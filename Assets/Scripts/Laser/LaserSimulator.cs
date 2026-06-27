@@ -33,8 +33,11 @@ namespace Laser
         [SerializeField] private int maxTotalBeamCount = 64;
 
         [Header("Distance Limit")]
+        [SerializeField] private bool useStageDataDistanceLimit = true;
         [SerializeField] private bool useDistanceLimit;
         [SerializeField] private int defaultMaxDistance = 20;
+
+        private bool runtimeUseDistanceLimit;
 
         [Header("Default State")]
         [SerializeField] private LaserColorKind defaultColor = LaserColorKind.Default;
@@ -56,8 +59,10 @@ namespace Laser
             Queue<LaserBeam> beamQueue = new();
             HashSet<LaserBeamState> visitedStates = new();
 
+            ResolveRuntimeDistanceLimit(out runtimeUseDistanceLimit, out int maxDistance);
+
             int nextBeamId = 0;
-            int remainingDistance = useDistanceLimit ? defaultMaxDistance : -1;
+            int remainingDistance = runtimeUseDistanceLimit ? maxDistance : -1;
 
             beamQueue.Enqueue(new LaserBeam(nextBeamId++, startPosition, startDirection, defaultColor, remainingDistance));
 
@@ -71,6 +76,20 @@ namespace Laser
             }
 
             return result;
+        }
+
+
+        private void ResolveRuntimeDistanceLimit(out bool useLimit, out int maxDistance)
+        {
+            useLimit = useDistanceLimit;
+            maxDistance = defaultMaxDistance;
+
+            if (!useStageDataDistanceLimit || gridManager == null || gridManager.CurrentStageData == null)
+                return;
+
+            StageData stageData = gridManager.CurrentStageData;
+            useLimit = stageData.useLaserDistanceLimit;
+            maxDistance = stageData.laserMaxDistance;
         }
 
         private bool TryDetectAdjacentTargetOnLaserEnd(LaserResult result, Vector2Int endPosition, LaserDirection endDirection, LaserColorKind color, int beamId)
@@ -133,7 +152,7 @@ namespace Laser
 
             for (int step = 0; step < maxStepCountPerBeam; step++)
             {
-                if (useDistanceLimit && remainingDistance <= 0)
+                if (runtimeUseDistanceLimit && remainingDistance <= 0)
                 {
                     if (step == 0)
                         result.AddNode(LaserPathNode.StartEnd(currentPosition, currentDirection, currentColor, beam.BeamId));
@@ -159,7 +178,7 @@ namespace Laser
 
                 AddSegment(result, currentPosition, nextPosition, currentColor, beam.BeamId);
 
-                if (useDistanceLimit)
+                if (runtimeUseDistanceLimit)
                     remainingDistance--;
 
                 LaserBeamState nextState = new LaserBeamState(nextPosition, currentDirection, currentColor);
@@ -204,7 +223,7 @@ namespace Laser
 
                     currentPosition = nextPosition;
 
-                    if (useDistanceLimit && remainingDistance <= 1)
+                    if (runtimeUseDistanceLimit && remainingDistance <= 1)
                     {
                         AddEndNode(result, currentPosition, currentDirection, currentColor, beam.BeamId);
                         result.SetDistanceEnded(currentPosition);
