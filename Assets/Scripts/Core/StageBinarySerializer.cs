@@ -8,7 +8,7 @@ namespace Core
     public static class StageBinarySerializer
     {
         private const string Magic = "TLS_STAGE";
-        private const int Version = 4;
+        private const int Version = 5;
 
         public static void Save(StageData stageData, string path)
         {
@@ -27,6 +27,14 @@ namespace Core
 
             writer.Write(stageData.stageNumber);
             writer.Write(stageData.stageName ?? string.Empty);
+            writer.Write(stageData.chapterIndex);
+            writer.Write(stageData.chapterName ?? string.Empty);
+            writer.Write(stageData.stageIndexInChapter);
+            writer.Write(stageData.chapterFeatureName ?? string.Empty);
+            writer.Write(stageData.bgmEventPath ?? string.Empty);
+            writer.Write(stageData.hasTutorial);
+            WriteStringList(writer, stageData.tutorialPages);
+            WriteVector2Int(writer, stageData.clearHolePosition);
             writer.Write(stageData.width);
             writer.Write(stageData.height);
             writer.Write(stageData.useLaserDistanceLimit);
@@ -60,22 +68,46 @@ namespace Core
             StageData stageData = new StageData
             {
                 stageNumber = reader.ReadInt32(),
-                stageName = reader.ReadString(),
-                width = reader.ReadInt32(),
-                height = reader.ReadInt32(),
-                useLaserDistanceLimit = reader.ReadBoolean(),
-                laserMaxDistance = reader.ReadInt32(),
-                moveLimit = reader.ReadInt32(),
-                playerStartPosition = ReadVector2Int(reader),
-                playerStartDirection = (GridDirection)reader.ReadInt32(),
-                wallPositions = ReadVector2IntList(reader),
-                targetPositions = ReadVector2IntList(reader),
-                advancedTargets = ReadTargetList(reader, version),
-                sequenceLockPattern = ReadIntList(reader),
-                distanceSensors = ReadDistanceSensorList(reader, version),
-                transformZones = ReadTransformZoneList(reader, version),
-                objects = ReadObjectList(reader)
+                stageName = reader.ReadString()
             };
+
+            if (version >= 5)
+            {
+                stageData.chapterIndex = reader.ReadInt32();
+                stageData.chapterName = reader.ReadString();
+                stageData.stageIndexInChapter = reader.ReadInt32();
+                stageData.chapterFeatureName = reader.ReadString();
+                stageData.bgmEventPath = reader.ReadString();
+                stageData.hasTutorial = reader.ReadBoolean();
+                stageData.tutorialPages = ReadStringList(reader);
+                stageData.clearHolePosition = ReadVector2Int(reader);
+            }
+            else
+            {
+                stageData.chapterIndex = 1;
+                stageData.chapterName = "Chapter 1";
+                stageData.stageIndexInChapter = stageData.stageNumber;
+                stageData.chapterFeatureName = string.Empty;
+                stageData.bgmEventPath = string.Empty;
+                stageData.hasTutorial = false;
+                stageData.tutorialPages = new List<string>();
+                stageData.clearHolePosition = Vector2Int.zero;
+            }
+
+            stageData.width = reader.ReadInt32();
+            stageData.height = reader.ReadInt32();
+            stageData.useLaserDistanceLimit = reader.ReadBoolean();
+            stageData.laserMaxDistance = reader.ReadInt32();
+            stageData.moveLimit = reader.ReadInt32();
+            stageData.playerStartPosition = ReadVector2Int(reader);
+            stageData.playerStartDirection = (GridDirection)reader.ReadInt32();
+            stageData.wallPositions = ReadVector2IntList(reader);
+            stageData.targetPositions = ReadVector2IntList(reader);
+            stageData.advancedTargets = ReadTargetList(reader, version);
+            stageData.sequenceLockPattern = ReadIntList(reader);
+            stageData.distanceSensors = ReadDistanceSensorList(reader, version);
+            stageData.transformZones = ReadTransformZoneList(reader, version);
+            stageData.objects = ReadObjectList(reader);
 
             return stageData;
         }
@@ -141,6 +173,25 @@ namespace Core
             List<int> list = new List<int>(count);
             for (int i = 0; i < count; i++)
                 list.Add(reader.ReadInt32());
+            return list;
+        }
+
+        private static void WriteStringList(BinaryWriter writer, List<string> list)
+        {
+            writer.Write(list?.Count ?? 0);
+            if (list == null)
+                return;
+
+            for (int i = 0; i < list.Count; i++)
+                writer.Write(list[i] ?? string.Empty);
+        }
+
+        private static List<string> ReadStringList(BinaryReader reader)
+        {
+            int count = reader.ReadInt32();
+            List<string> list = new List<string>(count);
+            for (int i = 0; i < count; i++)
+                list.Add(reader.ReadString());
             return list;
         }
 

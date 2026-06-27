@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Core;
@@ -18,6 +19,11 @@ namespace Grid
         [SerializeField] private string customStageFilePath;
 
         private string currentStageFilePath;
+        private bool stageCompletionLocked;
+        private bool clearHoleActive;
+        private Vector2Int clearHolePosition;
+
+        public event Action StageSolved;
 
         [Header("Grid World Setting")]
         [SerializeField] private float cellSize = 1f;
@@ -44,6 +50,10 @@ namespace Grid
         [SerializeField] private GridTransformZone transformZonePrefab;
         [SerializeField] private Transform transformZoneParent;
 
+        [Header("Runtime Clear Hole Spawn")]
+        [SerializeField] private GameObject clearHolePrefab;
+        [SerializeField] private Transform clearHoleParent;
+
         [Header("Debug")]
         [SerializeField] private bool drawGizmos = true;
 
@@ -58,6 +68,7 @@ namespace Grid
         private readonly List<GridTarget> spawnedTargets = new();
         private readonly List<GridDistanceSensor> spawnedDistanceSensors = new();
         private readonly List<GridTransformZone> spawnedTransformZones = new();
+        private GameObject spawnedClearHoleObject;
 
         public StageData CurrentStageData => stageData;
         public int Width => stageData != null ? stageData.width : 0;
@@ -129,6 +140,9 @@ namespace Grid
                 return;
 
             stageData = targetStageData;
+            stageCompletionLocked = false;
+            clearHoleActive = false;
+            clearHolePosition = stageData.clearHolePosition;
 
             ClearRuntimeGrid();
             CreateCells();
@@ -154,6 +168,7 @@ namespace Grid
             DestroyList(spawnedTargets);
             DestroyList(spawnedDistanceSensors);
             DestroyList(spawnedTransformZones);
+            DestroyClearHoleObject();
         }
 
         private void DestroyList<T>(List<T> list) where T : MonoBehaviour
@@ -425,6 +440,9 @@ namespace Grid
 
         public void EvaluateLaserResult(LaserResult result)
         {
+            if (stageCompletionLocked)
+                return;
+
             ResetAllTargets();
             ResetAllDistanceSensors();
 
@@ -435,6 +453,36 @@ namespace Grid
             EvaluateSequenceTargets(result);
             EvaluateDistanceSensors(result);
             EvaluateIntersectionTargets(result);
+
+            if (AreAllTargetsActivated())
+            {
+                if (!IsLaserDistanceExactlyMatched(result))
+                {
+                    SetAllTargetsFailed();
+                    return;
+                }
+
+                stageCompletionLocked = true;
+                StageSolved?.Invoke();
+            }
+        }
+
+        private bool IsLaserDistanceExactlyMatched(LaserResult result)
+        {
+            if (stageData == null || !stageData.useLaserDistanceLimit || stageData.laserMaxDistance <= 0)
+                return true;
+
+            return result != null && result.MaxBeamStepCount == stageData.laserMaxDistance;
+        }
+
+        private void SetAllTargetsFailed()
+        {
+            for (int i = 0; i < spawnedTargets.Count; i++)
+            {
+                GridTarget target = spawnedTargets[i];
+                if (target != null)
+                    target.SetFailed(true);
+            }
         }
 
         private void EvaluateNormalAndColorTargets(LaserResult result)
@@ -960,6 +1008,9 @@ namespace Grid
 
         public bool IsWalkable(Vector2Int position)
         {
+            if (clearHoleActive && position == clearHolePosition)
+                return false;
+
             GridCell cell = GetCell(position);
 
             if (cell == null)
@@ -1078,6 +1129,9 @@ namespace Grid
 
         public void ResetAllTargets()
         {
+            if (stageCompletionLocked)
+                return;
+
             for (int i = 0; i < spawnedTargets.Count; i++)
             {
                 if (spawnedTargets[i] != null)
@@ -1112,6 +1166,89 @@ namespace Grid
             }
 
             return true;
+        }
+
+        public void ClearStageSolvedLock()
+        {
+            stageCompletionLocked = false;
+            ResetAllTargets();
+        }
+
+        public bool IsStageSolvedLocked => stageCompletionLocked;
+        public bool IsClearHoleActive => clearHoleActive;
+        public Vector2Int ClearHolePosition => clearHolePosition;
+
+        public void SetClearHoleActive(bool active, Vector2Int position)
+        {
+            clearHoleActive = active;
+            clearHolePosition = position;
+
+            if (!active)
+            {
+                DestroyClearHoleObject();
+                return;
+            }
+
+            SpawnClearHoleObject(position);
+        }
+
+        private void SpawnClearHoleObject(Vector2Int position)
+        {
+            DestroyClearHoleObject();
+
+            if (!IsInside(position))
+                return;
+
+            if (clearHoleParent == null)
+                clearHoleParent = transform;
+
+            Vector3 worldPosition = GridToWorld(position);
+
+            if (clearHolePrefab != null)
+            {
+                spawnedClearHoleObject = Instantiate(clearHolePrefab, worldPosition, Quaternion.identity, clearHoleParent);
+                spawnedClearHoleObject.name = $"ClearHole_{position}";
+                return;
+            }
+
+            spawnedClearHoleObject = new GameObject($"ClearHole_{position}");
+            spawnedClearHoleObject.transform.SetParent(clearHoleParent);
+            spawnedClearHoleObject.transform.position = worldPosition;
+            SpriteRenderer renderer = spawnedClearHoleObject.AddComponent<SpriteRenderer>();
+            renderer.sprite = CreateFallbackHoleSprite();
+            renderer.color = new Color(0f, 0f, 0f, 0.9f);
+            renderer.sortingOrder = 20;
+            spawnedClearHoleObject.transform.localScale = Vector3.one * cellSize * 0.72f;
+        }
+
+        private Sprite CreateFallbackHoleSprite()
+        {
+            Texture2D texture = new Texture2D(32, 32, TextureFormat.RGBA32, false);
+            Color clear = new Color(0f, 0f, 0f, 0f);
+            Color solid = Color.white;
+            Vector2 center = new Vector2(15.5f, 15.5f);
+            float radius = 14.5f;
+
+            for (int y = 0; y < 32; y++)
+            {
+                for (int x = 0; x < 32; x++)
+                {
+                    float distance = Vector2.Distance(new Vector2(x, y), center);
+                    texture.SetPixel(x, y, distance <= radius ? solid : clear);
+                }
+            }
+
+            texture.Apply();
+            return Sprite.Create(texture, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f), 32f);
+        }
+
+        private void DestroyClearHoleObject()
+        {
+            if (spawnedClearHoleObject == null)
+                return;
+
+            Destroy(spawnedClearHoleObject);
+            spawnedClearHoleObject = null;
         }
 
         public IReadOnlyDictionary<Vector2Int, GridCell> GetCells()

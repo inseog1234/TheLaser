@@ -10,6 +10,18 @@ namespace Core
         [Header("Stage Info")]
         public int stageNumber = 1;
         public string stageName = "Stage 1";
+        public int chapterIndex = 1;
+        public string chapterName = "Chapter 1";
+        public int stageIndexInChapter = 1;
+        public string chapterFeatureName = "";
+
+        [Header("Audio / Tutorial")]
+        public string bgmEventPath = "";
+        public bool hasTutorial;
+        public List<string> tutorialPages = new();
+
+        [Header("Clear Hole")]
+        public Vector2Int clearHolePosition;
 
         [Header("Grid Size")]
         [Min(1)] public int width = 8;
@@ -94,6 +106,14 @@ namespace Core
             {
                 stageNumber = stageNumber,
                 stageName = stageName,
+                chapterIndex = chapterIndex,
+                chapterName = chapterName,
+                stageIndexInChapter = stageIndexInChapter,
+                chapterFeatureName = chapterFeatureName,
+                bgmEventPath = bgmEventPath,
+                hasTutorial = hasTutorial,
+                tutorialPages = tutorialPages != null ? new List<string>(tutorialPages) : new List<string>(),
+                clearHolePosition = clearHolePosition,
                 width = width,
                 height = height,
                 useLaserDistanceLimit = useLaserDistanceLimit,

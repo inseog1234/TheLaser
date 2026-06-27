@@ -15,6 +15,8 @@ namespace Player
         [SerializeField] private InputActionReference resetAction;
         [SerializeField] private InputActionReference undoAction;
         [SerializeField] private InputActionReference redoAction;
+        [SerializeField] private InputActionReference interactAction;
+        [SerializeField] private InputActionReference pauseAction;
 
         [Header("Option")]
         [SerializeField] private bool inputEnabled = true;
@@ -26,6 +28,8 @@ namespace Player
         public event Action ResetPressed;
         public event Action UndoPressed;
         public event Action RedoPressed;
+        public event Action InteractPressed;
+        public event Action PausePressed;
 
         public bool InputEnabled
         {
@@ -67,6 +71,12 @@ namespace Player
 
             if (redoAction != null)
                 redoAction.action.performed += OnRedoPerformed;
+
+            if (interactAction != null)
+                interactAction.action.performed += OnInteractPerformed;
+
+            if (pauseAction != null)
+                pauseAction.action.performed += OnPausePerformed;
         }
 
         private void UnsubscribeInputActions()
@@ -91,6 +101,12 @@ namespace Player
 
             if (redoAction != null)
                 redoAction.action.performed -= OnRedoPerformed;
+
+            if (interactAction != null)
+                interactAction.action.performed -= OnInteractPerformed;
+
+            if (pauseAction != null)
+                pauseAction.action.performed -= OnPausePerformed;
         }
 
         private void SetInputActionsEnabled(bool enabled)
@@ -102,6 +118,8 @@ namespace Player
             SetActionEnabled(resetAction, enabled);
             SetActionEnabled(undoAction, enabled);
             SetActionEnabled(redoAction, enabled);
+            SetActionEnabled(interactAction, enabled);
+            SetActionEnabled(pauseAction, enabled);
         }
 
         private void SetActionEnabled(InputActionReference actionReference, bool enabled)
@@ -183,6 +201,23 @@ namespace Player
                 return;
 
             RedoPressed?.Invoke();
+        }
+
+
+        private void OnInteractPerformed(InputAction.CallbackContext context)
+        {
+            if (!inputEnabled)
+                return;
+
+            InteractPressed?.Invoke();
+        }
+
+        private void OnPausePerformed(InputAction.CallbackContext context)
+        {
+            if (!inputEnabled)
+                return;
+
+            PausePressed?.Invoke();
         }
     }
 }

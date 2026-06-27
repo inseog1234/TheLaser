@@ -8,6 +8,7 @@ using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -18,8 +19,8 @@ namespace LevelEditor
     public class LevelEditorController : MonoBehaviour
     {
         private enum ToolCategory { All, Position, Target, Wall, Mirror, Prism, Zone, Tile }
-        private enum ToolType { None, PlayerStart, TargetNormal, TargetSequence, TargetIntersection, Wall, Mirror, PrismSplitter, PrismColor, PrismRefraction, ZoneRotate, ZoneMirror, DistanceSensor, LensAmplifier, Eraser }
-        private enum SelectedElementKind { None, PlayerStart, Wall, Target, Object, DistanceSensor, TransformZone }
+        private enum ToolType { None, PlayerStart, ClearHole, TargetNormal, TargetSequence, TargetIntersection, Wall, Mirror, PrismSplitter, PrismColor, PrismRefraction, ZoneRotate, ZoneMirror, DistanceSensor, LensAmplifier, Eraser }
+        private enum SelectedElementKind { None, PlayerStart, ClearHole, Wall, Target, Object, DistanceSensor, TransformZone }
         private enum TriggerEditMode { None, WaitingTarget, WaitingWallDestination, WaitingPrismDirection }
         private enum PlayerStartPreset { LeftTop, RightTop, CenterTop, LeftMiddle, RightMiddle, Center, LeftBottom, RightBottom, CenterBottom }
 
@@ -115,7 +116,9 @@ namespace LevelEditor
         private TMP_InputField newLaserInput;
         private TMP_InputField newMoveInput;
         private TMP_Dropdown newPlayerStartDropdown;
+        private TMP_Dropdown newHolePositionDropdown;
         private PlayerStartPreset newPlayerStartPreset = PlayerStartPreset.LeftMiddle;
+        private PlayerStartPreset newHolePositionPreset = PlayerStartPreset.Center;
         private TMP_InputField loadPathInput;
         private TMP_InputField saveDirectoryInput;
         private TMP_InputField saveFileNameInput;
@@ -170,6 +173,7 @@ namespace LevelEditor
             BuildUI();
             CreateNewLevel(defaultWidth, defaultHeight, defaultLaserMaxDistance, defaultMoveLimit, false);
             ShowMainPopup();
+            StartCoroutine(EditorTutorialRoutine());
         }
 
         private void Update()
@@ -215,7 +219,8 @@ namespace LevelEditor
                 laserMaxDistance = finalLaserMaxDistance,
                 moveLimit = Mathf.Max(0, moveLimit),
                 playerStartPosition = ResolvePlayerStartPosition(Mathf.Max(1, width), Mathf.Max(1, height), playerStartPreset),
-                playerStartDirection = GridDirection.Right
+                playerStartDirection = GridDirection.Right,
+                clearHolePosition = ResolvePlayerStartPosition(Mathf.Max(1, width), Mathf.Max(1, height), newHolePositionPreset)
             };
 
             defaultWidth = editingStageData.width;
@@ -302,6 +307,27 @@ namespace LevelEditor
             Application.OpenURL(ExportDirectory);
         }
 
+        private System.Collections.IEnumerator EditorTutorialRoutine()
+        {
+            yield return null;
+
+            if (PlayerPrefs.GetInt("TheLaser_LevelEditor_TutorialSeen", 0) == 1)
+                yield break;
+
+            PlayerPrefs.SetInt("TheLaser_LevelEditor_TutorialSeen", 1);
+            PlayerPrefs.Save();
+
+            RectTransform panel = CreatePanel("EditorTutorialOverlay", canvasRect, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-430f, -210f), new Vector2(430f, 210f), new Color(0.02f, 0.025f, 0.035f, 0.96f));
+            AddVerticalLayout(panel, 20, 20, 20, 20, 12).childForceExpandHeight = false;
+            TMP_Text title = AddText(panel, "레벨 에디터 튜토리얼", 32, TextAlignmentOptions.Center, Color.white);
+            title.enableWordWrapping = true;
+            TMP_Text body = AddText(panel, "왼쪽 기능 패널에서 기능을 고르고 맵에 좌클릭으로 배치합니다.\n기능 설정 패널에서 세부값을 바꾸고, 설명 패널에서 용도를 확인합니다.\n상단 상태창은 현재 작업 상태를 보여주며, 우측 도움말은 단축키를 보여줍니다.\n하단에는 테스트 / 저장하기 / 불러오기 / 메뉴 / 타이틀 버튼이 있습니다.", 22, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 0.98f, 1f));
+            body.enableWordWrapping = true;
+            body.overflowMode = TextOverflowModes.Overflow;
+            body.GetComponent<LayoutElement>().preferredHeight = 230f;
+            AddButton(panel, "확인", () => Destroy(panel.gameObject), 720f, 54f);
+        }
+
         private void EnsureBasics()
         {
             StageFilePaths.EnsureDefaultDirectories();
@@ -374,6 +400,7 @@ namespace LevelEditor
         {
             tools.Clear();
             tools.Add(new ToolDefinition(ToolType.PlayerStart, ToolCategory.Position, "플레이어 위치 수정", "플레이어 시작 위치와 바라보는 방향을 수정한다.", true));
+            tools.Add(new ToolDefinition(ToolType.ClearHole, ToolCategory.Position, "구멍 위치 수정", "스테이지 클리어 후 생성되는 구멍 위치를 수정한다."));
             tools.Add(new ToolDefinition(ToolType.TargetNormal, ToolCategory.Target, "도착지 / 색상 도착지", "Default면 일반 도착지, 색상을 고르면 해당 색상 레이저만 인정한다."));
             tools.Add(new ToolDefinition(ToolType.TargetSequence, ToolCategory.Target, "시퀸스 도착지", "정해진 순서대로 맞아야 하는 도착지다. 색상을 고르면 시퀸스+컬러 도착지가 된다."));
             tools.Add(new ToolDefinition(ToolType.TargetIntersection, ToolCategory.Target, "선분 교차 도착지", "여러 레이저 선분이 이 위치에서 교차하면 활성화된다."));
@@ -484,12 +511,16 @@ namespace LevelEditor
 
             bottomActionPanel = CreatePanel("BottomActionPanel", canvasRect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-190f, 16f), new Vector2(190f, 70f), new Color(0.05f, 0.055f, 0.07f, 0.85f));
             AddHorizontalLayout(bottomActionPanel, 8, 8, 8, 8, 10);
+            Button testButton = AddButton(bottomActionPanel, "테스트", StartTestPlay, 90f, 38f);
             Button saveButton = AddButton(bottomActionPanel, "저장하기", ShowSavePopup, 120f, 38f);
             Button loadButton = AddButton(bottomActionPanel, "불러오기", ShowLoadPopup, 120f, 38f);
             Button mainButton = AddButton(bottomActionPanel, "메뉴", ShowMainPopup, 90f, 38f);
+            Button titleButton = AddButton(bottomActionPanel, "타이틀", ReturnToTitle, 90f, 38f);
+            testButton.name = "TestButton";
             saveButton.name = "SaveButton";
             loadButton.name = "LoadButton";
             mainButton.name = "MenuButton";
+            titleButton.name = "TitleButton";
 
             ApplyFloatingPanelsLayout();
         }
@@ -520,6 +551,7 @@ namespace LevelEditor
             newLaserInput = AddInputRow(newLevelPopup, "레이저 최대 길이", defaultLaserMaxDistance.ToString(), null);
             newMoveInput = AddInputRow(newLevelPopup, "이동 제한 행동 수", defaultMoveLimit.ToString(), null);
             newPlayerStartDropdown = AddDropdownRow(newLevelPopup, "플레이어 위치", PlayerStartPresetNames(), (int)newPlayerStartPreset, index => newPlayerStartPreset = (PlayerStartPreset)index);
+            newHolePositionDropdown = AddDropdownRow(newLevelPopup, "구멍 위치", PlayerStartPresetNames(), (int)newHolePositionPreset, index => newHolePositionPreset = (PlayerStartPreset)index);
             TMP_Text info = AddText(newLevelPopup, "레이저 최대 길이와 이동 제한은 0이면 제한 없음", 17, TextAlignmentOptions.Left, new Color(0.8f, 0.86f, 0.95f, 1f));
             info.enableWordWrapping = false;
             AddButton(newLevelPopup, "완료", CompleteNewLevelPopup, 460f, 52f);
@@ -701,6 +733,13 @@ namespace LevelEditor
             if (selectedElementKind == SelectedElementKind.PlayerStart)
             {
                 AddStepperRow(settingsPanel, "방향", DirectionName(editingStageData.playerStartDirection), () => { editingStageData.playerStartDirection = editingStageData.playerStartDirection.RotateClockwise(); RebuildStageVisuals(); RebuildSettingsPanel(); }, () => { editingStageData.playerStartDirection = editingStageData.playerStartDirection.RotateCounterClockwise(); RebuildStageVisuals(); RebuildSettingsPanel(); });
+                AddButton(settingsPanel, "선택 해제", ClearSelection, 300f, 42f);
+                return;
+            }
+
+            if (selectedElementKind == SelectedElementKind.ClearHole)
+            {
+                AddText(settingsPanel, "구멍 위치는 드래그해서 이동할 수 있습니다.", 17, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 1f, 1f)).enableWordWrapping = true;
                 AddButton(settingsPanel, "선택 해제", ClearSelection, 300f, 42f);
                 return;
             }
@@ -968,6 +1007,8 @@ namespace LevelEditor
             int laser = ParseInt(newLaserInput, defaultLaserMaxDistance);
             int move = ParseInt(newMoveInput, defaultMoveLimit);
             CreateNewLevel(width, height, laser, move, laser > 0, newPlayerStartPreset, stageName);
+            editingStageData.clearHolePosition = ResolvePlayerStartPosition(width, height, newHolePositionPreset);
+            RebuildStageVisuals();
         }
 
         private void ApplyRuntimeSettingInputs()
@@ -1367,6 +1408,11 @@ namespace LevelEditor
                     selectedPosition = position;
                     break;
 
+                case SelectedElementKind.ClearHole:
+                    editingStageData.clearHolePosition = position;
+                    selectedPosition = position;
+                    break;
+
                 case SelectedElementKind.Wall:
                     if (editingStageData.wallPositions.Contains(selectedPosition))
                     {
@@ -1439,6 +1485,10 @@ namespace LevelEditor
                 case ToolType.PlayerStart:
                     editingStageData.playerStartPosition = position;
                     editingStageData.playerStartDirection = placementSettings.Direction;
+                    break;
+
+                case ToolType.ClearHole:
+                    editingStageData.clearHolePosition = position;
                     break;
 
                 case ToolType.TargetNormal:
@@ -1638,6 +1688,15 @@ namespace LevelEditor
             {
                 selectedElementKind = SelectedElementKind.PlayerStart;
                 UpdateDescription("플레이어 시작점", "플레이어 시작 방향을 수정할 수 있다.");
+                RebuildSettingsPanel();
+                RebuildStageVisuals();
+                return;
+            }
+
+            if (editingStageData.clearHolePosition == position)
+            {
+                selectedElementKind = SelectedElementKind.ClearHole;
+                UpdateDescription("구멍 위치", "목적지를 모두 활성화하면 생성되는 클리어 구멍 위치다. 드래그해서 위치를 바꿀 수 있다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
                 return;
@@ -1871,6 +1930,7 @@ namespace LevelEditor
             BuildObjectVisuals();
             BuildSensorVisuals();
             BuildPlayerStartVisual();
+            BuildClearHoleVisual();
             BuildTriggerLines();
             BuildPendingArrow();
             RefreshRuntimeSettingsPanel();
@@ -2009,6 +2069,18 @@ namespace LevelEditor
             AddWorldLabel(root.transform, "P", Vector3.zero, 0.34f, Color.white, 16);
             DrawDirectionArrow(root.transform, Vector3.zero, editingStageData.playerStartDirection, new Color(0.2f, 0.85f, 1f, 1f), 20);
             stageVisuals.Add(root);
+        }
+
+        private void BuildClearHoleVisual()
+        {
+            if (editingStageData == null || !editingStageData.IsInside(editingStageData.clearHolePosition))
+                return;
+
+            GameObject hole = CreateSpriteObject($"ClearHole_{editingStageData.clearHolePosition}", stageRoot.transform, GridToWorld(editingStageData.clearHolePosition), new Vector2(0.68f, 0.68f), new Color(0f, 0f, 0f, 0.82f), -2);
+            AddWorldLabel(hole.transform, "구멍", Vector3.zero, 0.18f, Color.white, 16);
+            if (selectedElementKind == SelectedElementKind.ClearHole)
+                CreateSpriteObject("SelectedClearHoleOutline", hole.transform, Vector3.zero, new Vector2(0.84f, 0.84f), new Color(1f, 0.85f, 0.2f, 0.35f), -1);
+            stageVisuals.Add(hole);
         }
 
         private void BuildTriggerLines()
@@ -2179,6 +2251,11 @@ namespace LevelEditor
                     CreateSpriteObject("PlayerGhost", parent, Vector3.zero, new Vector2(0.62f, 0.62f), new Color(0.2f, 0.65f, 1f, 0.65f), 30);
                     AddWorldLabel(parent, "P", Vector3.zero, 0.34f, Color.white, 32);
                     DrawDirectionArrow(parent, Vector3.zero, direction, Color.white, 33);
+                    break;
+
+                case ToolType.ClearHole:
+                    CreateSpriteObject("ClearHoleGhost", parent, Vector3.zero, new Vector2(0.68f, 0.68f), new Color(0f, 0f, 0f, 0.65f), 30);
+                    AddWorldLabel(parent, "구멍", Vector3.zero, 0.18f, Color.white, 32);
                     break;
 
                 case ToolType.TargetNormal:
@@ -2674,6 +2751,23 @@ namespace LevelEditor
             }
         }
 
+        private void StartTestPlay()
+        {
+            if (editingStageData == null)
+                return;
+
+            RebuildSequencePattern();
+            string tempPath = Path.Combine(StageFilePaths.MyCustomLevelsDirectory, "__EditorTestLevel.tls");
+            StageBinarySerializer.Save(editingStageData, tempPath);
+            GameSceneRequest.RequestEditorTestStage(tempPath, SceneManager.GetActiveScene().name);
+            SceneFadeController.Instance.LoadScene("Game");
+        }
+
+        private void ReturnToTitle()
+        {
+            SceneFadeController.Instance.LoadScene("Title");
+        }
+
         private void PickLoadFile()
         {
 #if UNITY_EDITOR
@@ -2717,6 +2811,7 @@ namespace LevelEditor
             if (newLaserInput != null) newLaserInput.text = defaultLaserMaxDistance.ToString();
             if (newMoveInput != null) newMoveInput.text = defaultMoveLimit.ToString();
             if (newPlayerStartDropdown != null) newPlayerStartDropdown.value = (int)newPlayerStartPreset;
+            if (newHolePositionDropdown != null) newHolePositionDropdown.value = (int)newHolePositionPreset;
             newLevelPopup.gameObject.SetActive(true);
         }
 

@@ -43,7 +43,7 @@ namespace Laser
             if (playerGridController == null || laserSimulator == null)
                 return;
 
-            if (playerGridController.IsMoving)
+            if (playerGridController.IsMoving || !playerGridController.ControlsEnabled)
                 return;
 
             Shoot(playerGridController.GridPosition, playerGridController.FacingDirection);

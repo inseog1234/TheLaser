@@ -23,11 +23,13 @@ namespace Player
         [SerializeField] private GridDirection facingDirection = GridDirection.Right;
 
         private bool isMoving;
+        private bool controlsEnabled = true;
         private Coroutine moveCoroutine;
 
         public Vector2Int GridPosition => gridPosition;
         public GridDirection FacingDirection => facingDirection;
         public bool IsMoving => isMoving;
+        public bool ControlsEnabled => controlsEnabled;
 
         private void Start()
         {
@@ -86,6 +88,9 @@ namespace Player
         public bool TryMove(GridDirection direction)
         {
             if (gridManager == null)
+                return false;
+
+            if (!controlsEnabled)
                 return false;
 
             if (isMoving)
@@ -207,6 +212,9 @@ namespace Player
 
         private void TryRotateForwardObject(bool clockwise)
         {
+            if (!controlsEnabled)
+                return;
+
             if (isMoving)
                 return;
 
@@ -221,6 +229,11 @@ namespace Player
                 turnHistoryController?.CommitTurn();
             else
                 turnHistoryController?.CancelTurn();
+        }
+
+        public void SetControlsEnabled(bool enabled)
+        {
+            controlsEnabled = enabled;
         }
 
         public void ApplyRuntimeStateImmediate(Vector2Int newGridPosition, GridDirection newFacingDirection)
