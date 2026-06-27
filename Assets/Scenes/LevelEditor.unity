@@ -338,8 +338,8 @@ MonoBehaviour:
   allowBuiltInLevelLoad: 0
   editorCamera: {fileID: 100002}
   cameraPanSpeed: 0.015
-  cameraZoomSpeed: 1
-  minCameraSize: 3
+  cameraZoomSpeed: 8
+  minCameraSize: 1
   maxCameraSize: 30
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

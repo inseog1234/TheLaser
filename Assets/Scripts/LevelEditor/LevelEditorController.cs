@@ -119,6 +119,7 @@ namespace LevelEditor
         private TMP_Dropdown newPlayerStartDropdown;
         private TMP_Dropdown newHolePositionDropdown;
         private TMP_Dropdown newBgmDropdown;
+        private TMP_Dropdown editorBgmDropdown;
         private PlayerStartPreset newPlayerStartPreset = PlayerStartPreset.LeftMiddle;
         private PlayerStartPreset newHolePositionPreset = PlayerStartPreset.Center;
         private int newBgmIndex;
@@ -152,6 +153,8 @@ namespace LevelEditor
         private string selectedLoadFilePath;
         private string selectedSaveDirectory;
         private string selectedSaveFileName = "CustomLevel";
+        private FmodRuntimeAudio audioController;
+        private int editorBgmIndex = 10;
         private bool suppressRuntimeSettingEvent;
         private bool isDraggingElement;
         private bool dragUndoCaptured;
@@ -172,6 +175,8 @@ namespace LevelEditor
         private void Awake()
         {
             EnsureBasics();
+            EnsureEditorAudio();
+            PlayEditorBgmByIndex(editorBgmIndex, false);
             CreateToolDefinitions();
             BuildUI();
             CreateNewLevel(defaultWidth, defaultHeight, defaultLaserMaxDistance, defaultMoveLimit, false);
@@ -245,6 +250,7 @@ namespace LevelEditor
             RefreshRuntimeSettingsPanel();
             ResetStageHistory();
             HideAllPopups();
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiConfirmation);
             SetStatus($"새 레벨 생성 완료: {editingStageData.stageName}");
         }
 
@@ -285,6 +291,7 @@ namespace LevelEditor
             RefreshRuntimeSettingsPanel();
             ResetStageHistory();
             HideAllPopups();
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiConfirmation);
             SetStatus($"불러오기 완료: {Path.GetFileName(fullPath)}");
         }
 
@@ -358,6 +365,7 @@ namespace LevelEditor
             editorCamera.orthographicSize = 8f;
             editorCamera.transform.position = new Vector3(0f, 0f, -10f);
             editorCamera.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 1f);
+            EnsureFmodStudioListener(editorCamera.gameObject);
 
             EnsureEventSystem();
 
@@ -368,6 +376,65 @@ namespace LevelEditor
             ghostRoot.SetActive(false);
             rangePreviewRoot.SetActive(false);
             pendingArrowRoot.SetActive(false);
+        }
+
+        private void EnsureFmodStudioListener(GameObject targetObject)
+        {
+            if (targetObject == null)
+                return;
+
+            Type listenerType = Type.GetType("FMODUnity.StudioListener, FMODUnity");
+            if (listenerType == null)
+                return;
+
+            if (targetObject.GetComponent(listenerType) == null)
+                targetObject.AddComponent(listenerType);
+        }
+
+        private void EnsureEditorAudio()
+        {
+            audioController = FmodRuntimeAudio.EnsureInstance();
+            if (audioController != null)
+                audioController.ApplySavedVolumes();
+        }
+
+        private FmodRuntimeAudio GetAudioController()
+        {
+            if (audioController == null)
+                EnsureEditorAudio();
+
+            return audioController;
+        }
+
+        private void PlayEditorBgmByIndex(int index, bool playUiSound)
+        {
+            List<string> paths = BgmEventPaths();
+            if (paths.Count <= 0)
+                return;
+
+            editorBgmIndex = Mathf.Clamp(index, 0, paths.Count - 1);
+
+            if (editorBgmDropdown != null)
+            {
+                editorBgmDropdown.SetValueWithoutNotify(editorBgmIndex);
+                editorBgmDropdown.RefreshShownValue();
+            }
+
+            if (playUiSound)
+                PlayEditorSfx(FmodRuntimeAudio.SfxEditorCheckBox);
+
+            GetAudioController()?.PlayBgm(paths[editorBgmIndex]);
+        }
+
+        private void SetEditorBgmFromDropdown(int index)
+        {
+            PlayEditorBgmByIndex(index, true);
+            SetStatus($"에디터 BGM 변경: {BgmDisplayNames()[editorBgmIndex]}");
+        }
+
+        private void PlayEditorSfx(string eventPath)
+        {
+            GetAudioController()?.PlaySfx(eventPath);
         }
 
         private void EnsureEventSystem()
@@ -546,9 +613,12 @@ namespace LevelEditor
 
         private void BuildMainPopup()
         {
-            mainPopup = CreateModalPanel("MainPopup", 520f, 360f, "레벨 에디터");
-            AddButton(mainPopup, "레벨 생성", ShowNewLevelPopup, 440f, 54f);
-            AddButton(mainPopup, "레벨 불러오기", ShowLoadPopup, 440f, 54f);
+            mainPopup = CreateModalPanel("MainPopup", 560f, 450f, "레벨 에디터");
+            AddButton(mainPopup, "레벨 생성", ShowNewLevelPopup, 460f, 54f);
+            AddButton(mainPopup, "레벨 불러오기", ShowLoadPopup, 460f, 54f);
+            editorBgmDropdown = AddDropdownRow(mainPopup, "에디터 BGM", BgmDisplayNames(), editorBgmIndex, SetEditorBgmFromDropdown);
+            TMP_Text info = AddText(mainPopup, "ESC로 이 메뉴를 열고 닫을 수 있습니다.", 17, TextAlignmentOptions.Center, new Color(0.8f, 0.86f, 0.95f, 1f));
+            info.enableWordWrapping = true;
         }
 
         private void BuildNewLevelPopup()
@@ -574,7 +644,7 @@ namespace LevelEditor
             loadPathInput = AddInputRow(loadPopup, "파일 경로", selectedLoadFilePath, value => selectedLoadFilePath = value);
             AddButton(loadPopup, "파일 경로 선택", PickLoadFile, 600f, 46f);
             AddButton(loadPopup, "불러오기", () => LoadLevel(selectedLoadFilePath), 600f, 52f);
-            AddButton(loadPopup, "취소", HideAllPopups, 600f, 42f);
+            AddButton(loadPopup, "취소", () => HideAllPopups(), 600f, 42f);
         }
 
         private void BuildSavePopup()
@@ -585,7 +655,7 @@ namespace LevelEditor
             saveFileNameInput = AddInputRow(savePopup, "파일 이름", selectedSaveFileName, value => selectedSaveFileName = value);
             AddButton(savePopup, "폴더 경로 선택", PickSaveFolder, 600f, 46f);
             AddButton(savePopup, "저장", ExportLevel, 600f, 52f);
-            AddButton(savePopup, "취소", HideAllPopups, 600f, 42f);
+            AddButton(savePopup, "취소", () => HideAllPopups(), 600f, 42f);
             currentFileText = AddText(savePopup, "", 16, TextAlignmentOptions.Left, new Color(0.75f, 0.8f, 0.9f, 1f));
             currentFileText.enableWordWrapping = false;
         }
@@ -619,12 +689,13 @@ namespace LevelEditor
 
         private void AddTabButton(RectTransform parent, string label, ToolCategory category)
         {
-            AddButton(parent, label, () => { selectedCategory = category; RebuildPalette(); }, 92f, 36f);
+            AddButton(parent, label, () => { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); selectedCategory = category; RebuildPalette(); }, 92f, 36f);
         }
 
         private void SelectTool(ToolDefinition tool)
         {
             selectedTool = tool;
+            PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect1);
             selectedElementKind = SelectedElementKind.None;
             selectedTarget = null;
             selectedObject = null;
@@ -1146,7 +1217,7 @@ namespace LevelEditor
             }
 
             float scroll = mouse.scroll.ReadValue().y;
-            if (Mathf.Abs(scroll) > 0.01f)
+            if (Mathf.Abs(scroll) > 0.01f && !IsPointerOverUI())
                 editorCamera.orthographicSize = Mathf.Clamp(editorCamera.orthographicSize - scroll * cameraZoomSpeed * 0.03f, minCameraSize, maxCameraSize);
         }
 
@@ -1193,6 +1264,7 @@ namespace LevelEditor
                 {
                     triggerEditMode = TriggerEditMode.None;
                     pendingArrowRoot.SetActive(false);
+                    PlayEditorSfx(FmodRuntimeAudio.SfxUiCancel);
                     SetStatus("트리거 추가 취소");
                     RebuildStageVisuals();
                     RebuildSettingsPanel();
@@ -1204,11 +1276,19 @@ namespace LevelEditor
                     selectedTool = null;
                     ghostRoot.SetActive(false);
                     rangePreviewRoot.SetActive(false);
+                    PlayEditorSfx(FmodRuntimeAudio.SfxUiCancel);
                     RebuildPalette();
                     RebuildSettingsPanel();
                     SetStatus("배치 취소");
                     return;
                 }
+
+                if (IsAnyPopupOpen())
+                    HideAllPopups(true);
+                else
+                    ShowMainPopup();
+
+                return;
             }
 
             if (keyboard.xKey.wasPressedThisFrame)
@@ -1599,6 +1679,7 @@ namespace LevelEditor
                     break;
             }
 
+            PlayEditorSfx(selectedTool.ToolType == ToolType.Eraser ? FmodRuntimeAudio.SfxEditorObjRemove : FmodRuntimeAudio.SfxEditorObjPlaced);
             selectedTool = null;
             RebuildSequencePattern();
             RebuildStageVisuals();
@@ -1653,12 +1734,14 @@ namespace LevelEditor
         {
             ClearSelectionReferencesOnly();
             selectedPosition = position;
+            bool playedSelectionSound = false;
 
             DistanceSensorData sensor = FindSensorAt(position);
             if (sensor != null)
             {
                 selectedElementKind = SelectedElementKind.DistanceSensor;
                 selectedSensor = sensor;
+                if (!playedSelectionSound) { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); playedSelectionSound = true; }
                 UpdateDescription("거리 감응 타일", "레이저 선분이 감지 반경 안을 지나면 연결된 트리거를 실행한다. X 또는 C로 트리거 추가를 시작한다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
@@ -1670,6 +1753,7 @@ namespace LevelEditor
             {
                 selectedElementKind = SelectedElementKind.Target;
                 selectedTarget = target;
+                if (!playedSelectionSound) { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); playedSelectionSound = true; }
                 UpdateDescription("도착지", "도착지 타입과 색상/순서/교차 조건을 수정할 수 있다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
@@ -1681,6 +1765,7 @@ namespace LevelEditor
             {
                 selectedElementKind = SelectedElementKind.Object;
                 selectedObject = obj;
+                if (!playedSelectionSound) { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); playedSelectionSound = true; }
                 UpdateDescription(GetObjectDisplayName(obj), "오브젝트의 방향과 상호작용 조건을 수정할 수 있다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
@@ -1690,6 +1775,7 @@ namespace LevelEditor
             if (editingStageData.wallPositions.Contains(position))
             {
                 selectedElementKind = SelectedElementKind.Wall;
+                if (!playedSelectionSound) { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); playedSelectionSound = true; }
                 UpdateDescription("벽", "고정 벽이다. 밀 수 있음으로 바꾸면 오브젝트 벽이 된다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
@@ -1699,6 +1785,7 @@ namespace LevelEditor
             if (editingStageData.playerStartPosition == position)
             {
                 selectedElementKind = SelectedElementKind.PlayerStart;
+                if (!playedSelectionSound) { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); playedSelectionSound = true; }
                 UpdateDescription("플레이어 시작점", "플레이어 시작 방향을 수정할 수 있다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
@@ -1708,6 +1795,7 @@ namespace LevelEditor
             if (editingStageData.clearHolePosition == position)
             {
                 selectedElementKind = SelectedElementKind.ClearHole;
+                if (!playedSelectionSound) { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); playedSelectionSound = true; }
                 UpdateDescription("구멍 위치", "목적지를 모두 활성화하면 생성되는 클리어 구멍 위치다. 드래그해서 위치를 바꿀 수 있다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
@@ -1719,6 +1807,7 @@ namespace LevelEditor
             {
                 selectedElementKind = SelectedElementKind.TransformZone;
                 selectedZone = zone;
+                if (!playedSelectionSound) { PlayEditorSfx(FmodRuntimeAudio.SfxEditorSelect2); playedSelectionSound = true; }
                 UpdateDescription(zone.zoneType == TransformZoneType.Rotate90 ? "회전 구역" : "대칭 구역", "구역 크기와 변환 방식을 수정할 수 있다.");
                 RebuildSettingsPanel();
                 RebuildStageVisuals();
@@ -1859,6 +1948,7 @@ namespace LevelEditor
                 return;
 
             triggerEditMode = TriggerEditMode.WaitingTarget;
+            PlayEditorSfx(FmodRuntimeAudio.SfxEditorTrigger);
             SetStatus("트리거 추가: 벽/거울/변환 구역을 클릭하세요. X를 다시 누르면 취소됩니다.");
             RebuildStageVisuals();
         }
@@ -1894,6 +1984,7 @@ namespace LevelEditor
                 if (zone != null)
                 {
                     selectedSensor.triggers.Add(new DistanceSensorTriggerData { triggerId = CreateId("ZoneTrigger", selectedSensor.position), triggerKind = DistanceSensorTriggerKind.ActivateTransformZone, transformZoneId = zone.zoneId });
+                    PlayEditorSfx(FmodRuntimeAudio.SfxEditorTrigger);
                     triggerEditMode = TriggerEditMode.None;
                     SetStatus("변환 구역 트리거 추가 완료");
                     RebuildStageVisuals();
@@ -1908,6 +1999,7 @@ namespace LevelEditor
             if (triggerEditMode == TriggerEditMode.WaitingWallDestination)
             {
                 selectedSensor.triggers.Add(new DistanceSensorTriggerData { triggerId = CreateId("WallMoveTrigger", selectedSensor.position), triggerKind = DistanceSensorTriggerKind.MoveWall, wallPosition = pendingWallPosition, wallMoveTargetPosition = position });
+                PlayEditorSfx(FmodRuntimeAudio.SfxEditorTrigger);
                 triggerEditMode = TriggerEditMode.None;
                 SetStatus("벽 이동 트리거 추가 완료");
                 RebuildStageVisuals();
@@ -1921,6 +2013,7 @@ namespace LevelEditor
                 return;
 
             selectedSensor.triggers.Add(new DistanceSensorTriggerData { triggerId = CreateId("MirrorStateTrigger", selectedSensor.position), triggerKind = DistanceSensorTriggerKind.ChangeMirrorState, mirrorPosition = pendingPrismPosition, mirrorDirection = pendingPrismDirection, mirrorShape = pendingMirrorShape });
+            PlayEditorSfx(FmodRuntimeAudio.SfxEditorTrigger);
             triggerEditMode = TriggerEditMode.None;
             pendingArrowRoot.SetActive(false);
             SetStatus("거울 상태 변경 트리거 추가 완료");
@@ -2759,6 +2852,7 @@ namespace LevelEditor
             if (showStatus)
             {
                 HideAllPopups();
+                PlayEditorSfx(FmodRuntimeAudio.SfxUiConfirmation);
                 SetStatus($"저장 완료: {path}");
             }
         }
@@ -2811,7 +2905,13 @@ namespace LevelEditor
         private void ShowMainPopup()
         {
             HideAllPopups();
+            if (editorBgmDropdown != null)
+            {
+                editorBgmDropdown.SetValueWithoutNotify(editorBgmIndex);
+                editorBgmDropdown.RefreshShownValue();
+            }
             mainPopup.gameObject.SetActive(true);
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
         }
 
         private void ShowNewLevelPopup()
@@ -2831,6 +2931,7 @@ namespace LevelEditor
             }
             if (newHolePositionDropdown != null) newHolePositionDropdown.value = (int)newHolePositionPreset;
             newLevelPopup.gameObject.SetActive(true);
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
         }
 
         private void ShowLoadPopup()
@@ -2838,6 +2939,7 @@ namespace LevelEditor
             HideAllPopups();
             if (loadPathInput != null) loadPathInput.text = selectedLoadFilePath;
             loadPopup.gameObject.SetActive(true);
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
         }
 
         private void ShowSavePopup()
@@ -2847,14 +2949,27 @@ namespace LevelEditor
             if (saveFileNameInput != null) saveFileNameInput.text = selectedSaveFileName;
             if (currentFileText != null) currentFileText.text = string.IsNullOrWhiteSpace(currentFilePath) ? "현재 파일 없음" : currentFilePath;
             savePopup.gameObject.SetActive(true);
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
         }
 
-        private void HideAllPopups()
+        private bool IsAnyPopupOpen()
         {
+            return (mainPopup != null && mainPopup.gameObject.activeSelf) ||
+                (newLevelPopup != null && newLevelPopup.gameObject.activeSelf) ||
+                (loadPopup != null && loadPopup.gameObject.activeSelf) ||
+                (savePopup != null && savePopup.gameObject.activeSelf);
+        }
+
+        private void HideAllPopups(bool playSound = false)
+        {
+            bool hadOpenPopup = IsAnyPopupOpen();
             if (mainPopup != null) mainPopup.gameObject.SetActive(false);
             if (newLevelPopup != null) newLevelPopup.gameObject.SetActive(false);
             if (loadPopup != null) loadPopup.gameObject.SetActive(false);
             if (savePopup != null) savePopup.gameObject.SetActive(false);
+
+            if (playSound && hadOpenPopup)
+                PlayEditorSfx(FmodRuntimeAudio.SfxUiClose);
         }
 
         private void UpdateDescription(string title, string description)
@@ -2957,7 +3072,11 @@ namespace LevelEditor
             image.color = new Color(0.15f, 0.17f, 0.23f, 1f);
             Button button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = image;
-            button.onClick.AddListener(onClick);
+            button.onClick.AddListener(() =>
+            {
+                PlayEditorSfx(FmodRuntimeAudio.SfxUiClick);
+                onClick?.Invoke();
+            });
             LayoutElement layout = rect.gameObject.AddComponent<LayoutElement>();
             layout.preferredWidth = width;
             layout.preferredHeight = height;
@@ -2977,7 +3096,7 @@ namespace LevelEditor
             TMP_Text labelText = AddText(row, label, 17, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 1f, 1f));
             labelText.GetComponent<LayoutElement>().preferredWidth = 170f;
             TMP_InputField input = CreateInputField(row, value);
-            input.onEndEdit.AddListener(text => onEndEdit?.Invoke(text));
+            input.onEndEdit.AddListener(text => { PlayEditorSfx(FmodRuntimeAudio.SfxEditorCheckBox); onEndEdit?.Invoke(text); });
             runtimeSettingSelectables.Add(input);
             return input;
         }
@@ -3008,7 +3127,7 @@ namespace LevelEditor
             TMP_Text labelText = AddText(row, label, 17, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 1f, 1f));
             labelText.GetComponent<LayoutElement>().flexibleWidth = 1f;
             Toggle toggle = CreateToggle(row, value);
-            toggle.onValueChanged.AddListener(isOn => onChanged?.Invoke(isOn));
+            toggle.onValueChanged.AddListener(isOn => { PlayEditorSfx(FmodRuntimeAudio.SfxEditorCheckBox); onChanged?.Invoke(isOn); });
         }
 
         private Toggle CreateToggle(Transform parent, bool value)
@@ -3135,7 +3254,7 @@ namespace LevelEditor
             labelText.GetComponent<LayoutElement>().preferredWidth = 150f;
             TMP_Dropdown dropdown = CreateDropdown(row, options);
             dropdown.value = Mathf.Clamp(value, 0, dropdown.options.Count - 1);
-            dropdown.onValueChanged.AddListener(index => onChanged?.Invoke(index));
+            dropdown.onValueChanged.AddListener(index => { PlayEditorSfx(FmodRuntimeAudio.SfxEditorCheckBox); onChanged?.Invoke(index); });
             dropdown.RefreshShownValue();
             return dropdown;
         }
@@ -3185,7 +3304,7 @@ namespace LevelEditor
             labelText.GetComponent<LayoutElement>().preferredWidth = 120f;
             TMP_Dropdown dropdown = CreateDropdown(row, EnumNames<LaserColorKind>());
             dropdown.value = Mathf.Clamp((int)value, 0, dropdown.options.Count - 1);
-            dropdown.onValueChanged.AddListener(index => onChanged?.Invoke((LaserColorKind)index));
+            dropdown.onValueChanged.AddListener(index => { PlayEditorSfx(FmodRuntimeAudio.SfxEditorCheckBox); onChanged?.Invoke((LaserColorKind)index); });
         }
 
         private TMP_Dropdown CreateDropdown(Transform parent, List<string> options)

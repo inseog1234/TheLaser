@@ -39,10 +39,9 @@ namespace UI.Title
             StageFilePaths.EnsureDefaultDirectories();
             font = Resources.Load<TMP_FontAsset>("Font/TMP/PF스타더스트 3");
             whiteSprite = CreateWhiteSprite();
-            audioController = FindFirstObjectByType<FmodRuntimeAudio>();
-            if (audioController == null)
-                audioController = gameObject.AddComponent<FmodRuntimeAudio>();
+            audioController = FmodRuntimeAudio.EnsureInstance();
             audioController.ApplySavedVolumes();
+            audioController.PlayBgm(FmodRuntimeAudio.BgmTitle);
             BuildUI();
         }
 
@@ -92,7 +91,7 @@ namespace UI.Title
             BuildCustomPopup();
             BuildCustomLevelPopup();
             BuildSettingsPopup();
-            HideAllPopups();
+            HideAllPopups(false);
         }
 
         private void BuildStagePopup()
@@ -224,6 +223,7 @@ namespace UI.Title
             if (entry == null || entry.Data == null || !StageProgressManager.IsStageUnlocked(entry.Data))
                 return;
 
+            PlayUiConfirmation();
             GameSceneRequest.RequestBuiltInStage(entry.Path);
             SceneFadeController.Instance.LoadScene(gameSceneName);
         }
@@ -233,34 +233,122 @@ namespace UI.Title
             if (string.IsNullOrWhiteSpace(selectedCustomLevelPath))
                 return;
 
+            PlayUiConfirmation();
             GameSceneRequest.RequestCustomStage(selectedCustomLevelPath);
             SceneFadeController.Instance.LoadScene(gameSceneName);
         }
 
         private void OpenLevelEditor()
         {
+            PlayUiConfirmation();
             SceneFadeController.Instance.LoadScene(editorSceneName);
         }
 
-        private void ShowStagePopup() { HideAllPopups(); stagePopup.gameObject.SetActive(true); }
-        private void ShowCustomPopup() { HideAllPopups(); customPopup.gameObject.SetActive(true); }
-        private void ShowCustomLevelPopup() { HideAllPopups(); customPopup.gameObject.SetActive(false); customLevelPopup.gameObject.SetActive(true); }
-        private void ShowSettingsPopup() { HideAllPopups(); settingsPopup.gameObject.SetActive(true); }
+        private void ShowStagePopup()
+        {
+            HideAllPopups(false);
+            if (stagePopup != null)
+                stagePopup.gameObject.SetActive(true);
+            PlayUiOpen();
+        }
+
+        private void ShowCustomPopup()
+        {
+            HideAllPopups(false);
+            if (customPopup != null)
+                customPopup.gameObject.SetActive(true);
+            PlayUiOpen();
+        }
+
+        private void ShowCustomLevelPopup()
+        {
+            HideAllPopups(false);
+            if (customLevelPopup != null)
+                customLevelPopup.gameObject.SetActive(true);
+            PlayUiOpen();
+        }
+
+        private void ShowSettingsPopup()
+        {
+            HideAllPopups(false);
+            if (settingsPopup != null)
+                settingsPopup.gameObject.SetActive(true);
+            PlayUiOpen();
+        }
+
         private void HideAllPopups()
         {
-            if (stagePopup != null) stagePopup.gameObject.SetActive(false);
-            if (customPopup != null) customPopup.gameObject.SetActive(false);
-            if (customLevelPopup != null) customLevelPopup.gameObject.SetActive(false);
-            if (settingsPopup != null) settingsPopup.gameObject.SetActive(false);
+            HideAllPopups(true);
+        }
+
+        private void HideAllPopups(bool playSound)
+        {
+            bool closedAny = false;
+
+            if (stagePopup != null && stagePopup.gameObject.activeSelf)
+            {
+                stagePopup.gameObject.SetActive(false);
+                closedAny = true;
+            }
+
+            if (customPopup != null && customPopup.gameObject.activeSelf)
+            {
+                customPopup.gameObject.SetActive(false);
+                closedAny = true;
+            }
+
+            if (customLevelPopup != null && customLevelPopup.gameObject.activeSelf)
+            {
+                customLevelPopup.gameObject.SetActive(false);
+                closedAny = true;
+            }
+
+            if (settingsPopup != null && settingsPopup.gameObject.activeSelf)
+            {
+                settingsPopup.gameObject.SetActive(false);
+                closedAny = true;
+            }
+
+            if (playSound && closedAny)
+                PlayUiClose();
         }
 
         private void QuitGame()
         {
+            PlayUiConfirmation();
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
 #else
             Application.Quit();
 #endif
+        }
+
+        private void PlayUiClick()
+        {
+            PlaySfx(FmodRuntimeAudio.SfxUiClick);
+        }
+
+        private void PlayUiOpen()
+        {
+            PlaySfx(FmodRuntimeAudio.SfxUiOpen);
+        }
+
+        private void PlayUiClose()
+        {
+            PlaySfx(FmodRuntimeAudio.SfxUiClose);
+        }
+
+        private void PlayUiConfirmation()
+        {
+            PlaySfx(FmodRuntimeAudio.SfxUiConfirmation);
+        }
+
+        private void PlaySfx(string eventPath)
+        {
+            if (audioController == null)
+                audioController = FmodRuntimeAudio.EnsureInstance();
+
+            audioController?.PlaySfx(eventPath);
         }
 
         private RectTransform CreateModal(string name, float width, float height, string title)
@@ -343,7 +431,11 @@ namespace UI.Title
             le.preferredWidth = width;
             le.preferredHeight = height;
             Button button = rect.gameObject.AddComponent<Button>();
-            button.onClick.AddListener(onClick);
+            button.onClick.AddListener(() =>
+            {
+                PlayUiClick();
+                onClick?.Invoke();
+            });
             AddText(rect, label, 22, TextAlignmentOptions.Center, Color.white, false).rectTransform.anchorMin = Vector2.zero;
             rect.GetChild(0).GetComponent<RectTransform>().anchorMin = Vector2.zero;
             rect.GetChild(0).GetComponent<RectTransform>().anchorMax = Vector2.one;

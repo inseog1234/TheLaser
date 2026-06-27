@@ -189,6 +189,33 @@ MonoBehaviour:
   MinDistance: 1
   MaxDistance: 20
   Length: 115017
+--- !u!114 &-5693244262009180454
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ceb653cd98e289a4e8697a1af55201f2, type: 3}
+  m_Name: event:/BGM/TitleBGM
+  m_EditorClassIdentifier: FMODUnityEditor::FMODUnity.EditorEventRef
+  Path: event:/BGM/TitleBGM
+  Guid:
+    Data1: 911432227
+    Data2: 1131021721
+    Data3: 187649158
+    Data4: 632996908
+  Banks:
+  - {fileID: 3235367767818039095}
+  IsStream: 1
+  Is3D: 0
+  IsOneShot: 0
+  Parameters: []
+  MinDistance: 1
+  MaxDistance: 20
+  Length: 131719
 --- !u!114 &-5371028389615784608
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -419,13 +446,14 @@ MonoBehaviour:
   - {fileID: -5371028389615784608}
   - {fileID: 5825555563816465107}
   - {fileID: 8178966951951107139}
+  - {fileID: -5693244262009180454}
   EditorParameters: []
   MasterBanks:
   - {fileID: 3235367767818039095}
   StringsBanks:
   - {fileID: 7474506847432036703}
   cacheVersion: 131860
-  cacheTime: 639182020265696284
+  cacheTime: 639182061616704240
   SerializableEventsDict:
   - key: event:/SFX/StageOpen
     index: 0
@@ -477,6 +505,8 @@ MonoBehaviour:
     index: 23
   - key: event:/BGM/Chapter05
     index: 24
+  - key: event:/BGM/TitleBGM
+    index: 25
 --- !u!114 &61407948863568147
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -600,10 +630,10 @@ MonoBehaviour:
   Path: Fmod/Laser/Build/Desktop/Master.bank
   Name: Master
   StudioPath: bank:/Master
-  lastModified: 639182020265672427
+  lastModified: 639182061616675764
   FileSizes:
   - Name: Desktop
-    Value: 20030720
+    Value: 21651680
   Exists: 1
 --- !u!114 &3275226461226014354
 MonoBehaviour:
@@ -755,10 +785,10 @@ MonoBehaviour:
   Path: Fmod/Laser/Build/Desktop/Master.strings.bank
   Name: Master.strings
   StudioPath: bank:/Master.strings
-  lastModified: 639182020265696284
+  lastModified: 639182061616704240
   FileSizes:
   - Name: Desktop
-    Value: 1844
+    Value: 1884
   Exists: 1
 --- !u!114 &8165554695078953904
 MonoBehaviour:

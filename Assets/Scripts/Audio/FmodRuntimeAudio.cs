@@ -11,6 +11,7 @@ namespace Audio
         [Header("Option")]
         [SerializeField] private bool dontDestroyOnLoad = true;
 
+        public const string BgmTitle = "event:/BGM/TitleBGM";
         public const string BgmChapter01 = "event:/BGM/Chapter01";
         public const string BgmChapter02 = "event:/BGM/Chapter02";
         public const string BgmChapter03 = "event:/BGM/Chapter03";
@@ -44,6 +45,21 @@ namespace Audio
 
         private object currentBgmInstance;
         private string currentBgmEventPath;
+
+        public string CurrentBgmEventPath => currentBgmEventPath;
+
+        public static FmodRuntimeAudio EnsureInstance()
+        {
+            if (Instance != null)
+                return Instance;
+
+            FmodRuntimeAudio existing = FindFirstObjectByType<FmodRuntimeAudio>();
+            if (existing != null)
+                return existing;
+
+            GameObject audioObject = new GameObject("FmodRuntimeAudio");
+            return audioObject.AddComponent<FmodRuntimeAudio>();
+        }
 
         private void Awake()
         {
@@ -228,6 +244,9 @@ namespace Audio
 
             if (fileName.StartsWith("Chapter", StringComparison.OrdinalIgnoreCase))
                 return $"event:/BGM/{fileName}";
+
+            if (fileName.Equals("TitleBGM", StringComparison.OrdinalIgnoreCase))
+                return BgmTitle;
 
             if (fileName.Equals("EditorBGM", StringComparison.OrdinalIgnoreCase))
                 return BgmEditor;
