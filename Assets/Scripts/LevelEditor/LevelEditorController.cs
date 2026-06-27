@@ -1017,7 +1017,7 @@ namespace LevelEditor
             if (target.targetType == TargetType.SequenceLocked || target.targetType == TargetType.SequenceColorLocked)
             {
                 AddIntStepper(settingsPanel, "시퀸스 Index", target.sequenceValue, 1, 999, value => { target.sequenceValue = GetAvailableSequenceIndex(value, target); RebuildSequencePattern(); RebuildStageVisuals(); RebuildSettingsPanel(); });
-                AddLaserColorDropdown(settingsPanel, "색상", target.requiredColor, value => { target.requiredColor = value; target.targetType = value == LaserColorKind.Default ? TargetType.SequenceLocked : TargetType.SequenceColorLocked; RebuildStageVisuals(); RebuildSettingsPanel(); });
+                AddLaserColorDropdown(settingsPanel, "색상", target.requiredColor, value => { target.requiredColor = value; target.targetType = value == LaserColorKind.Default ? TargetType.SequenceLocked : TargetType.SequenceColorLocked; RebuildSequencePattern(); RebuildStageVisuals(); RebuildSettingsPanel(); });
                 return;
             }
 
@@ -1662,7 +1662,7 @@ namespace LevelEditor
                         targetType = placementSettings.Color == LaserColorKind.Default ? TargetType.SequenceLocked : TargetType.SequenceColorLocked,
                         requiredColor = placementSettings.Color,
                         sequenceValue = GetAvailableSequenceIndex(placementSettings.SequenceIndex, null),
-                        stopLaserOnHit = true
+                        stopLaserOnHit = false
                     };
                     AddTargetData(sequenceTarget);
                     RebuildSequencePattern();
@@ -2567,6 +2567,7 @@ namespace LevelEditor
         private void RebuildSequencePattern()
         {
             HashSet<int> values = new HashSet<int>();
+
             for (int i = 0; i < editingStageData.advancedTargets.Count; i++)
             {
                 StageTargetData target = editingStageData.advancedTargets[i];
@@ -2581,8 +2582,20 @@ namespace LevelEditor
             }
 
             List<int> sorted = new List<int>(values);
-            sorted.Sort((a, b) => b.CompareTo(a));
+            sorted.Sort((a, b) => a.CompareTo(b));
             editingStageData.sequenceLockPattern = sorted;
+
+            int lastSequenceIndex = sorted.Count > 0 ? sorted[sorted.Count - 1] : -1;
+
+            for (int i = 0; i < editingStageData.advancedTargets.Count; i++)
+            {
+                StageTargetData target = editingStageData.advancedTargets[i];
+                if (target == null)
+                    continue;
+
+                if (target.targetType == TargetType.SequenceLocked || target.targetType == TargetType.SequenceColorLocked)
+                    target.stopLaserOnHit = target.sequenceValue == lastSequenceIndex;
+            }
         }
 
         private int GetNextSequenceIndex()

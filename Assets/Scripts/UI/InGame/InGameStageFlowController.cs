@@ -383,6 +383,10 @@ namespace UI.InGame
         private IEnumerator JumpIntoHoleRoutine()
         {
             isJumpingIntoHole = true;
+
+            if (laserShooter != null)
+                laserShooter.ClearLaser();
+
             playerController.SetControlsEnabled(false);
             Transform player = playerController.transform;
             Vector3 start = player.position;

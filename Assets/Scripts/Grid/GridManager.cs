@@ -140,6 +140,7 @@ namespace Grid
                 return;
 
             stageData = targetStageData;
+            NormalizeSequenceTargets(stageData);
             stageCompletionLocked = false;
             clearHoleActive = false;
             clearHolePosition = stageData.clearHolePosition;
@@ -153,6 +154,45 @@ namespace Grid
             SpawnTransformZones();
             SpawnFixedWalls();
             SpawnStageObjects();
+        }
+
+        private void NormalizeSequenceTargets(StageData targetStageData)
+        {
+            if (targetStageData == null || targetStageData.advancedTargets == null)
+                return;
+
+            List<int> sequenceValues = new();
+
+            for (int i = 0; i < targetStageData.advancedTargets.Count; i++)
+            {
+                StageTargetData target = targetStageData.advancedTargets[i];
+                if (target == null)
+                    continue;
+
+                if (target.targetType != TargetType.SequenceLocked && target.targetType != TargetType.SequenceColorLocked)
+                    continue;
+
+                if (target.sequenceValue < 1)
+                    target.sequenceValue = 1;
+
+                if (!sequenceValues.Contains(target.sequenceValue))
+                    sequenceValues.Add(target.sequenceValue);
+            }
+
+            sequenceValues.Sort((a, b) => a.CompareTo(b));
+            targetStageData.sequenceLockPattern = sequenceValues;
+
+            int lastSequenceIndex = sequenceValues.Count > 0 ? sequenceValues[sequenceValues.Count - 1] : -1;
+
+            for (int i = 0; i < targetStageData.advancedTargets.Count; i++)
+            {
+                StageTargetData target = targetStageData.advancedTargets[i];
+                if (target == null)
+                    continue;
+
+                if (target.targetType == TargetType.SequenceLocked || target.targetType == TargetType.SequenceColorLocked)
+                    target.stopLaserOnHit = target.sequenceValue == lastSequenceIndex;
+            }
         }
 
         private void ClearRuntimeGrid()

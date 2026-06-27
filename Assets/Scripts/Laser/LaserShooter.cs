@@ -97,7 +97,7 @@ namespace Laser
             ClearLaser();
         }
 
-        private void ClearLaser()
+        public void ClearLaser()
         {
             if (laserRenderer != null)
                 laserRenderer.Clear();

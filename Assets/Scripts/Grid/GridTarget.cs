@@ -144,6 +144,7 @@ namespace Grid
                 symbolText.text = symbol;
                 symbolText.color = targetColor;
                 symbolText.gameObject.SetActive(!string.IsNullOrEmpty(symbol));
+                colorIndicatorRenderer.gameObject.SetActive(string.IsNullOrEmpty(symbol));
             }
         }
 
