@@ -134,7 +134,18 @@ namespace UI.InGame
 
         private void LoadRequestedStageIfNeeded()
         {
-            if (!GameSceneRequest.HasRequest || gridManager == null || string.IsNullOrWhiteSpace(GameSceneRequest.StageFilePath))
+            if (!GameSceneRequest.HasRequest || gridManager == null)
+                return;
+
+            if (GameSceneRequest.IsEditorTestPlay && GameSceneRequest.HasEditorTestStageData)
+            {
+                gridManager.LoadStage(GameSceneRequest.EditorTestStageData.Clone());
+                if (playerController != null)
+                    playerController.ResetToStageStartImmediate();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(GameSceneRequest.StageFilePath))
                 return;
 
             gridManager.LoadStageFromFile(GameSceneRequest.StageFilePath);
@@ -390,7 +401,8 @@ namespace UI.InGame
                 audioController.PlaySfx(FmodRuntimeAudio.SfxStageClear);
 
             yield return SceneFadeController.Instance.Fade(1f, 0.35f);
-            StageProgressManager.MarkCleared(currentStage);
+            if (!GameSceneRequest.IsEditorTestPlay)
+                StageProgressManager.MarkCleared(currentStage);
             LoadNextStageOrReturnTitle();
         }
 
@@ -399,7 +411,7 @@ namespace UI.InGame
             if (GameSceneRequest.IsEditorTestPlay)
             {
                 string returnScene = string.IsNullOrWhiteSpace(GameSceneRequest.ReturnSceneName) ? "LevelEditor" : GameSceneRequest.ReturnSceneName;
-                GameSceneRequest.Clear();
+                GameSceneRequest.ClearGameplayRequest();
                 SceneFadeController.Instance.LoadSceneFromCurrentFade(returnScene, 0.35f);
                 return;
             }
@@ -548,7 +560,7 @@ namespace UI.InGame
         {
             Time.timeScale = 1f;
             string returnScene = string.IsNullOrWhiteSpace(GameSceneRequest.ReturnSceneName) ? "LevelEditor" : GameSceneRequest.ReturnSceneName;
-            GameSceneRequest.Clear();
+            GameSceneRequest.ClearGameplayRequest();
             SceneFadeController.Instance.LoadScene(returnScene);
         }
 

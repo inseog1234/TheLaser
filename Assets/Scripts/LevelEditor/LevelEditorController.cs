@@ -179,8 +179,14 @@ namespace LevelEditor
             PlayEditorBgmByIndex(editorBgmIndex, false);
             CreateToolDefinitions();
             BuildUI();
-            CreateNewLevel(defaultWidth, defaultHeight, defaultLaserMaxDistance, defaultMoveLimit, false);
-            ShowMainPopup();
+
+            bool restoredFromTest = TryRestoreEditorStageAfterTest();
+            if (!restoredFromTest)
+            {
+                CreateNewLevel(defaultWidth, defaultHeight, defaultLaserMaxDistance, defaultMoveLimit, false);
+                ShowMainPopup();
+            }
+
             StartCoroutine(EditorTutorialRoutine());
         }
 
@@ -252,6 +258,31 @@ namespace LevelEditor
             HideAllPopups();
             PlayEditorSfx(FmodRuntimeAudio.SfxUiConfirmation);
             SetStatus($"새 레벨 생성 완료: {editingStageData.stageName}");
+        }
+
+        private bool TryRestoreEditorStageAfterTest()
+        {
+            if (!GameSceneRequest.TryConsumeEditorReturnStage(out StageData restoredStageData, out string restoredFilePath, out string restoredSaveDirectory, out string restoredSaveFileName))
+                return false;
+
+            editingStageData = restoredStageData;
+            currentFilePath = restoredFilePath;
+            selectedSaveDirectory = string.IsNullOrWhiteSpace(restoredSaveDirectory) ? StageFilePaths.MyCustomLevelsDirectory : restoredSaveDirectory;
+            selectedSaveFileName = string.IsNullOrWhiteSpace(restoredSaveFileName) ? StageFilePaths.NormalizeStageFileName(editingStageData.stageName).Replace(".tls", string.Empty) : restoredSaveFileName;
+
+            defaultWidth = editingStageData.width;
+            defaultHeight = editingStageData.height;
+            defaultLaserMaxDistance = editingStageData.laserMaxDistance;
+            defaultMoveLimit = editingStageData.moveLimit;
+
+            ClearSelection();
+            RebuildSequencePattern();
+            RebuildStageVisuals();
+            RefreshRuntimeSettingsPanel();
+            ResetStageHistory();
+            HideAllPopups(false);
+            SetStatus("테스트 종료: 작업 중인 맵을 복구함");
+            return true;
         }
 
         public void LoadLevelFromInputPath()
@@ -2863,9 +2894,7 @@ namespace LevelEditor
                 return;
 
             RebuildSequencePattern();
-            string tempPath = Path.Combine(StageFilePaths.MyCustomLevelsDirectory, "__EditorTestLevel.tls");
-            StageBinarySerializer.Save(editingStageData, tempPath);
-            GameSceneRequest.RequestEditorTestStage(tempPath, SceneManager.GetActiveScene().name);
+            GameSceneRequest.RequestEditorTestStage(editingStageData, SceneManager.GetActiveScene().name, currentFilePath, selectedSaveDirectory, selectedSaveFileName);
             SceneFadeController.Instance.LoadScene("Game");
         }
 
