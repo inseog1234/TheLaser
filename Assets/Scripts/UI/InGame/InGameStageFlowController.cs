@@ -34,6 +34,11 @@ namespace UI.InGame
         [Header("Stage Clear Presentation")]
         [SerializeField] private float stageClearLaserPathViewDuration = 1f;
         [SerializeField] private float clearHoleFocusHoldDuration = 2f;
+        [SerializeField] private bool lockPlayerDuringStageClearLaserPath = true;
+        [SerializeField] private bool shakeCameraOnStageSolved = true;
+        [SerializeField] private float stageSolvedShakeDuration = 0.18f;
+        [SerializeField] private float stageSolvedShakeStrength = 0.24f;
+        [SerializeField] private float stageSolvedShakeFrequency = 55f;
 
         private TMP_FontAsset font;
         private Sprite whiteSprite;
@@ -259,6 +264,10 @@ namespace UI.InGame
             playerController.SetControlsEnabled(false);
             Transform player = playerController.transform;
             Vector3 finalPosition = player.position;
+
+            if (smoothCameraFollow != null)
+                smoothCameraFollow.PrepareStageStartZoom(finalPosition);
+
             Vector3 startPosition = finalPosition + Vector3.up * 1.4f;
             Vector3 finalScale = player.localScale;
             player.position = startPosition;
@@ -295,6 +304,10 @@ namespace UI.InGame
             player.position = finalPosition;
             player.localScale = finalScale;
             Destroy(shadow);
+
+            if (smoothCameraFollow != null)
+                yield return smoothCameraFollow.PlayStageStartRevealRoutine();
+
             playerController.SetControlsEnabled(true);
         }
 
@@ -350,6 +363,12 @@ namespace UI.InGame
 
         private IEnumerator StageSolvedPresentationRoutine()
         {
+            if (lockPlayerDuringStageClearLaserPath && playerController != null)
+                playerController.SetControlsEnabled(false);
+
+            if (shakeCameraOnStageSolved && smoothCameraFollow != null)
+                smoothCameraFollow.PlayShake(stageSolvedShakeDuration, stageSolvedShakeStrength, stageSolvedShakeFrequency);
+
             float viewDuration = Mathf.Max(0f, stageClearLaserPathViewDuration);
             float elapsed = 0f;
             while (elapsed < viewDuration)
@@ -359,6 +378,10 @@ namespace UI.InGame
             }
 
             ActivateClearHoleAndFocus();
+
+            if (lockPlayerDuringStageClearLaserPath && playerController != null && !pauseOpen && !tutorialOpen && !isJumpingIntoHole)
+                playerController.SetControlsEnabled(true);
+
             stageSolvedPresentationRoutine = null;
         }
 

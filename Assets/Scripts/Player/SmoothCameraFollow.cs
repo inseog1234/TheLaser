@@ -47,6 +47,21 @@ namespace Player
         [SerializeField] private float fullMapMaxSpeed = 220f;
         [SerializeField] private float maxFullMapOrthographicSize = 30f;
 
+        [Header("Stage Start Intro")]
+        [SerializeField] private bool playStageStartZoomIntro = true;
+        [SerializeField] private float stageStartZoomOrthographicSize = 2.2f;
+        [SerializeField] private bool stageStartRevealFullMap = true;
+        [SerializeField] private float stageStartZoomOutDuration = 0.7f;
+        [SerializeField] private float stageStartMapHoldDuration = 0.25f;
+        [SerializeField] private float stageStartReturnDuration = 0.45f;
+        [SerializeField] private float stageStartFullMapPadding = 0.8f;
+        [SerializeField] private AnimationCurve stageStartIntroCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+        [Header("Camera Shake")]
+        [SerializeField] private float defaultShakeDuration = 0.18f;
+        [SerializeField] private float defaultShakeStrength = 0.22f;
+        [SerializeField] private float defaultShakeFrequency = 48f;
+
         [Header("Axis")]
         [SerializeField] private bool followX = true;
         [SerializeField] private bool followY = true;
@@ -66,6 +81,10 @@ namespace Player
         private bool suppressLaserFraming;
         private Coroutine clearHoleFocusRoutine;
         private Vector3 clearHoleFocusTargetStartPosition;
+        private bool isStageStartIntroPlaying;
+        private Coroutine cameraShakeRoutine;
+        private Vector3 currentShakeOffset;
+        private Vector3 appliedShakeOffset;
 
         private void Awake()
         {
@@ -94,15 +113,30 @@ namespace Player
 
         private void LateUpdate()
         {
+            if (appliedShakeOffset != Vector3.zero)
+            {
+                transform.position -= appliedShakeOffset;
+                appliedShakeOffset = Vector3.zero;
+            }
+
             if (target == null || targetCamera == null)
                 return;
+
+            if (isStageStartIntroPlaying)
+            {
+                ApplyCameraShakeOffset();
+                return;
+            }
 
             if (isClearHoleFocusPlaying)
             {
                 if (HasPlayerMovedDuringClearHoleFocus())
                     CancelClearHoleFocus(true);
                 else
+                {
+                    ApplyCameraShakeOffset();
                     return;
+                }
             }
 
             Vector3 desiredPosition = GetDesiredPosition();
@@ -123,6 +157,7 @@ namespace Player
 
             transform.position = Vector3.SmoothDamp(transform.position, desiredPosition, ref velocity, currentSmoothTime, currentMaxSpeed, Time.deltaTime);
             targetCamera.orthographicSize = Mathf.SmoothDamp(targetCamera.orthographicSize, desiredOrthographicSize, ref zoomVelocity, currentZoomSmoothTime, Mathf.Infinity, Time.deltaTime);
+            ApplyCameraShakeOffset();
         }
 
         public void SetTarget(Transform newTarget, bool snap = true)
@@ -199,6 +234,97 @@ namespace Player
                 targetCamera.orthographicSize = defaultOrthographicSize;
                 zoomVelocity = 0f;
             }
+        }
+
+        public void PrepareStageStartZoom(Vector3 focusWorldPosition)
+        {
+            if (!playStageStartZoomIntro || targetCamera == null)
+                return;
+
+            CancelClearHoleFocus(false);
+            isStageStartIntroPlaying = true;
+            suppressLaserFraming = true;
+            velocity = Vector3.zero;
+            zoomVelocity = 0f;
+
+            float introSize = Mathf.Clamp(stageStartZoomOrthographicSize, 0.1f, defaultOrthographicSize);
+            Vector3 focusPosition = new Vector3(focusWorldPosition.x, focusWorldPosition.y, keepInitialZ ? fixedZ : transform.position.z);
+            focusPosition = ClampToGridBounds(focusPosition, introSize);
+            transform.position = focusPosition;
+            targetCamera.orthographicSize = introSize;
+        }
+
+        public IEnumerator PlayStageStartRevealRoutine()
+        {
+            if (!playStageStartZoomIntro || targetCamera == null)
+            {
+                isStageStartIntroPlaying = false;
+                suppressLaserFraming = false;
+                yield break;
+            }
+
+            Vector3 startPosition = transform.position;
+            float startSize = targetCamera.orthographicSize;
+            Vector3 revealPosition = target != null ? GetDesiredPosition() : startPosition;
+            float revealSize = defaultOrthographicSize;
+
+            if (stageStartRevealFullMap && TryGetGridWorldBounds(out Bounds mapBounds))
+            {
+                if (stageStartFullMapPadding > 0f)
+                    mapBounds.Expand(stageStartFullMapPadding * 2f);
+
+                revealPosition = new Vector3(mapBounds.center.x, mapBounds.center.y, keepInitialZ ? fixedZ : transform.position.z);
+                revealSize = CalculateOrthographicSizeToFitBounds(mapBounds, 0f);
+                revealSize = Mathf.Clamp(revealSize, defaultOrthographicSize, Mathf.Max(defaultOrthographicSize, maxFullMapOrthographicSize));
+            }
+
+            revealPosition = ClampToGridBounds(revealPosition, revealSize);
+            yield return AnimateStageStartCamera(startPosition, startSize, revealPosition, revealSize, stageStartZoomOutDuration, false);
+
+            float hold = Mathf.Max(0f, stageStartMapHoldDuration);
+            float holdElapsed = 0f;
+            while (holdElapsed < hold)
+            {
+                holdElapsed += Time.deltaTime;
+                transform.position = revealPosition;
+                targetCamera.orthographicSize = revealSize;
+                yield return null;
+            }
+
+            Vector3 returnStartPosition = transform.position;
+            float returnStartSize = targetCamera.orthographicSize;
+            Vector3 returnPosition = target != null ? ClampToGridBounds(GetDesiredPosition(), defaultOrthographicSize) : returnStartPosition;
+            yield return AnimateStageStartCamera(returnStartPosition, returnStartSize, returnPosition, defaultOrthographicSize, stageStartReturnDuration, true);
+
+            if (target != null)
+                transform.position = ClampToGridBounds(GetDesiredPosition(), defaultOrthographicSize);
+
+            targetCamera.orthographicSize = defaultOrthographicSize;
+            velocity = Vector3.zero;
+            zoomVelocity = 0f;
+            isStageStartIntroPlaying = false;
+            suppressLaserFraming = false;
+        }
+
+        public void PlayShake()
+        {
+            PlayShake(defaultShakeDuration, defaultShakeStrength, defaultShakeFrequency);
+        }
+
+        public void PlayShake(float duration, float strength)
+        {
+            PlayShake(duration, strength, defaultShakeFrequency);
+        }
+
+        public void PlayShake(float duration, float strength, float frequency)
+        {
+            if (targetCamera == null)
+                return;
+
+            if (cameraShakeRoutine != null)
+                StopCoroutine(cameraShakeRoutine);
+
+            cameraShakeRoutine = StartCoroutine(CameraShakeRoutine(duration, strength, frequency));
         }
 
         private IEnumerator ClearHoleFocusRoutine(Vector3 holeWorldPosition, float holdDuration)
@@ -292,12 +418,71 @@ namespace Player
             targetCamera.orthographicSize = toSize;
         }
 
+        private IEnumerator AnimateStageStartCamera(Vector3 fromPosition, float fromSize, Vector3 toPosition, float toSize, float duration, bool dynamicTarget)
+        {
+            float elapsed = 0f;
+            duration = Mathf.Max(0.01f, duration);
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = EvaluateStageStartCurve(Mathf.Clamp01(elapsed / duration));
+                Vector3 currentTargetPosition = dynamicTarget && target != null ? ClampToGridBounds(GetDesiredPosition(), toSize) : toPosition;
+                transform.position = Vector3.LerpUnclamped(fromPosition, currentTargetPosition, t);
+                targetCamera.orthographicSize = Mathf.LerpUnclamped(fromSize, toSize, t);
+                yield return null;
+            }
+
+            transform.position = dynamicTarget && target != null ? ClampToGridBounds(GetDesiredPosition(), toSize) : toPosition;
+            targetCamera.orthographicSize = toSize;
+        }
+
+        private IEnumerator CameraShakeRoutine(float duration, float strength, float frequency)
+        {
+            duration = Mathf.Max(0.01f, duration);
+            strength = Mathf.Max(0f, strength);
+            frequency = Mathf.Max(1f, frequency);
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.unscaledDeltaTime;
+                float normalized = Mathf.Clamp01(elapsed / duration);
+                float fade = 1f - normalized;
+                float seed = Time.unscaledTime * frequency;
+                float x = (Mathf.PerlinNoise(seed, 0.17f) * 2f - 1f) * strength * fade;
+                float y = (Mathf.PerlinNoise(0.73f, seed) * 2f - 1f) * strength * fade;
+                currentShakeOffset = new Vector3(x, y, 0f);
+                yield return null;
+            }
+
+            currentShakeOffset = Vector3.zero;
+            cameraShakeRoutine = null;
+        }
+
+        private void ApplyCameraShakeOffset()
+        {
+            if (currentShakeOffset == Vector3.zero)
+                return;
+
+            transform.position += currentShakeOffset;
+            appliedShakeOffset = currentShakeOffset;
+        }
+
         private float EvaluateClearHoleCurve(float t)
         {
             if (clearHoleFocusCurve == null)
                 return t;
 
             return clearHoleFocusCurve.Evaluate(t);
+        }
+
+        private float EvaluateStageStartCurve(float t)
+        {
+            if (stageStartIntroCurve == null)
+                return t;
+
+            return stageStartIntroCurve.Evaluate(t);
         }
 
         private bool HasPlayerMovedDuringClearHoleFocus()
@@ -399,6 +584,7 @@ namespace Player
             if (keepInitialZ) desiredPosition.z = fixedZ;
 
             desiredOrthographicSize = CalculateOrthographicSizeToFitBounds(laserBounds, laserViewportMargin);
+            desiredOrthographicSize = Mathf.Clamp(desiredOrthographicSize, defaultOrthographicSize, Mathf.Max(defaultOrthographicSize, maxLaserFrameOrthographicSize));
             return true;
         }
 
@@ -428,9 +614,7 @@ namespace Player
             float visibleRatio = Mathf.Max(0.1f, 1f - margin);
             float heightSize = bounds.extents.y / visibleRatio;
             float widthSize = bounds.extents.x / Mathf.Max(0.01f, targetCamera.aspect * visibleRatio);
-            float requiredSize = Mathf.Max(defaultOrthographicSize, heightSize, widthSize);
-            float maxSize = Mathf.Max(defaultOrthographicSize, maxLaserFrameOrthographicSize);
-            return Mathf.Clamp(requiredSize, defaultOrthographicSize, maxSize);
+            return Mathf.Max(defaultOrthographicSize, heightSize, widthSize);
         }
 
         private Vector3 ClampToGridBounds(Vector3 desiredPosition, float orthographicSize)
