@@ -186,7 +186,7 @@ namespace UI.Title
             AddButton(customPopup, "레벨 플레이", ShowCustomLevelPopup, 420f, 58f);
             AddButton(customPopup, "내 레벨 관리", ShowCustomManagePopup, 420f, 58f);
             AddButton(customPopup, "레벨 다운로드", ShowCustomDownloadPopup, 420f, 58f);
-            AddButton(customPopup, "레벨 만들기", OpenLevelEditor, 420f, 58f);
+            AddButton(customPopup, "레벨 에디터", OpenLevelEditor, 420f, 58f);
             AddButton(customPopup, "닫기", HideAllPopups, 420f, 44f);
         }
 

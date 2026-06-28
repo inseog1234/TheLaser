@@ -45,6 +45,12 @@ namespace UI.InGame
         [SerializeField] private float stageSolvedShakeStrength = 0.24f;
         [SerializeField] private float stageSolvedShakeFrequency = 55f;
 
+        [Header("Editor Auto Solver")]
+        [SerializeField] private bool enableEditorAutoSolver = true;
+        [SerializeField] private float autoSolverActionDelay = 0.3f;
+        [SerializeField] private int autoSolverMaxNodeCount = 120000;
+        [SerializeField] private int autoSolverMaxActionCount = 80;
+
         private TMP_FontAsset font;
         private Sprite whiteSprite;
         private Canvas canvas;
@@ -58,6 +64,12 @@ namespace UI.InGame
         private RectTransform holeVisual;
         private StageData currentStage;
         private readonly List<StageSolutionActionData> editorRecordedSolutionActions = new();
+        private StageData autoSolverInitialStageData;
+        private TMP_Text autoSolverStatusText;
+        private Coroutine autoSolverRoutine;
+        private int autoSolverSpeedMultiplier = 1;
+        private bool isAutoSolverRunning;
+        private bool previousInputEnabledBeforeAutoSolver = true;
         private bool isRecordingEditorSolution;
         private bool stageSolved;
         private bool pauseOpen;
@@ -84,6 +96,7 @@ namespace UI.InGame
             EnsureReferences();
             LoadRequestedStageIfNeeded();
             currentStage = gridManager != null ? gridManager.CurrentStageData : null;
+            autoSolverInitialStageData = currentStage != null ? currentStage.Clone() : null;
 
             if (audioController != null)
                 audioController.ApplySavedVolumes();
@@ -151,6 +164,8 @@ namespace UI.InGame
             if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
                 HandleInteractPressed();
 
+            HandleEditorAutoSolverHotkeys();
+
             UpdateHoleInteractIcon();
             UpdateMoveLimitText();
         }
@@ -205,6 +220,193 @@ namespace UI.InGame
                 playerController.ResetToStageStartImmediate();
         }
 
+        private void HandleEditorAutoSolverHotkeys()
+        {
+            if (!enableEditorAutoSolver || !GameSceneRequest.IsEditorTestPlay || Keyboard.current == null)
+                return;
+
+            if (Keyboard.current.digit1Key.wasPressedThisFrame || Keyboard.current.numpad1Key.wasPressedThisFrame)
+                SetAutoSolverSpeed(1);
+
+            if (Keyboard.current.digit2Key.wasPressedThisFrame || Keyboard.current.numpad2Key.wasPressedThisFrame)
+                SetAutoSolverSpeed(2);
+
+            if (Keyboard.current.digit3Key.wasPressedThisFrame || Keyboard.current.numpad3Key.wasPressedThisFrame)
+                SetAutoSolverSpeed(3);
+
+            if (Keyboard.current.pKey.wasPressedThisFrame)
+                StartEditorAutoSolver();
+        }
+
+        private void SetAutoSolverSpeed(int multiplier)
+        {
+            autoSolverSpeedMultiplier = Mathf.Clamp(multiplier, 1, 3);
+
+            ShowAutoSolverStatus($"AI 자동 풀이 {autoSolverSpeedMultiplier}배속", new Color(0.55f, 0.85f, 1f, 1f));
+        }
+
+        private void StartEditorAutoSolver()
+        {
+            if (isAutoSolverRunning)
+                return;
+
+            if (!GameSceneRequest.IsEditorTestPlay)
+                return;
+
+            if (autoSolverRoutine != null)
+                StopCoroutine(autoSolverRoutine);
+
+            autoSolverRoutine = StartCoroutine(EditorAutoSolverRoutine());
+        }
+
+        private IEnumerator EditorAutoSolverRoutine()
+        {
+            isAutoSolverRunning = true;
+            previousInputEnabledBeforeAutoSolver = inputReader == null || inputReader.InputEnabled;
+
+            if (inputReader != null)
+                inputReader.InputEnabled = false;
+
+            if (playerController != null)
+                playerController.SetControlsEnabled(false);
+
+            ShowAutoSolverStatus($"AI 풀이 탐색 중... {autoSolverSpeedMultiplier}배속", new Color(0.55f, 0.85f, 1f, 1f));
+            yield return null;
+
+            StageData solveTarget = autoSolverInitialStageData != null ? autoSolverInitialStageData.Clone() : currentStage != null ? currentStage.Clone() : null;
+            bool solved = StageAutoSolver.TrySolve(solveTarget, out List<StageSolutionActionData> solutionActions, out string solveMessage, autoSolverMaxNodeCount, autoSolverMaxActionCount);
+
+            if (!solved)
+            {
+                ShowAutoSolverStatus(solveMessage, new Color(1f, 0.35f, 0.35f, 1f));
+                RestoreInputAfterAutoSolver();
+                isAutoSolverRunning = false;
+                autoSolverRoutine = null;
+                yield break;
+            }
+
+            ShowAutoSolverStatus($"AI 풀이 실행 중... {autoSolverSpeedMultiplier}배속 / {solutionActions.Count} 행동", new Color(0.55f, 0.85f, 1f, 1f));
+            ResetStageForAutoSolverPlayback(solveTarget);
+
+            if (playerController != null)
+                playerController.SetControlsEnabled(true);
+
+            for (int i = 0; i < solutionActions.Count; i++)
+            {
+                if (stageSolved)
+                    break;
+
+                StageSolutionActionData action = solutionActions[i];
+                ApplyAutoSolverAction(action);
+
+                while (playerController != null && playerController.IsMoving)
+                    yield return null;
+
+                ShowAutoSolverStatus($"AI 자동 풀이 {autoSolverSpeedMultiplier}배속  {i + 1}/{solutionActions.Count}", new Color(0.55f, 0.85f, 1f, 1f));
+                float waitTime = autoSolverSpeedMultiplier <= 0 ? autoSolverActionDelay : autoSolverActionDelay / autoSolverSpeedMultiplier;
+                yield return new WaitForSeconds(waitTime);
+            }
+
+            if (!stageSolved && laserShooter != null)
+            {
+                ShowAutoSolverStatus($"AI 자동 풀이 {autoSolverSpeedMultiplier}배속  레이저 발사", new Color(0.55f, 0.85f, 1f, 1f));
+                laserShooter.ShootFromPlayer();
+            }
+
+            RestoreInputAfterAutoSolver();
+            isAutoSolverRunning = false;
+            autoSolverRoutine = null;
+        }
+
+        private void ResetStageForAutoSolverPlayback(StageData stageData)
+        {
+            if (stageData == null || gridManager == null)
+                return;
+
+            if (laserShooter != null)
+                laserShooter.ClearLaser();
+
+            stageSolved = false;
+            clearHoleActivated = false;
+            isJumpingIntoHole = false;
+
+            if (stageSolvedPresentationRoutine != null)
+            {
+                StopCoroutine(stageSolvedPresentationRoutine);
+                stageSolvedPresentationRoutine = null;
+            }
+
+            gridManager.LoadStage(stageData.Clone());
+            currentStage = gridManager.CurrentStageData;
+            editorRecordedSolutionActions.Clear();
+            isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay;
+
+            if (playerController != null)
+                playerController.ResetToStageStartImmediate();
+
+            if (turnHistoryController != null)
+            {
+                turnHistoryController.ClearHistory();
+                turnHistoryController.SetTurnCountingEnabled(true);
+            }
+
+            UpdateMoveLimitText();
+        }
+
+        private void ApplyAutoSolverAction(StageSolutionActionData action)
+        {
+            if (action == null || playerController == null)
+                return;
+
+            switch (action.actionType)
+            {
+                case StageSolutionActionType.RotateClockwise:
+                    playerController.TryRotateForwardObject(true);
+                    break;
+
+                case StageSolutionActionType.RotateCounterClockwise:
+                    playerController.TryRotateForwardObject(false);
+                    break;
+
+                default:
+                    playerController.TryMove(action.direction);
+                    break;
+            }
+        }
+
+        private void RestoreInputAfterAutoSolver()
+        {
+            if (inputReader != null)
+                inputReader.InputEnabled = previousInputEnabledBeforeAutoSolver;
+
+            if (playerController != null && !stageSolved && !pauseOpen && !tutorialOpen && !isJumpingIntoHole)
+                playerController.SetControlsEnabled(true);
+        }
+
+        private void StopAutoSolverRoutine(bool restoreInput)
+        {
+            if (autoSolverRoutine != null)
+            {
+                StopCoroutine(autoSolverRoutine);
+                autoSolverRoutine = null;
+            }
+
+            isAutoSolverRunning = false;
+
+            if (restoreInput)
+                RestoreInputAfterAutoSolver();
+        }
+
+        private void ShowAutoSolverStatus(string text, Color color)
+        {
+            if (autoSolverStatusText == null)
+                return;
+
+            autoSolverStatusText.text = text;
+            autoSolverStatusText.color = color;
+            autoSolverStatusText.gameObject.SetActive(true);
+        }
+
         private void HandleSolutionActionPerformed(StageSolutionActionData action)
         {
             if (!isRecordingEditorSolution || stageSolved || action == null)
@@ -241,7 +443,7 @@ namespace UI.InGame
             canvasObject.AddComponent<GraphicRaycaster>();
             root = canvasObject.GetComponent<RectTransform>();
 
-            RectTransform intro = CreatePanel("StageIntro", root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-260f, -110f), new Vector2(260f, -22f), new Color(0f, 0f, 0f, 0.55f));
+            RectTransform intro = CreatePanel("StageIntro", root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-260f, -149f), new Vector2(260f, -61f), new Color(0f, 0f, 0f, 0.55f));
             AddVertical(intro, 8, 8, 8, 8, 2);
             introText = AddText(intro, "", 28, TextAlignmentOptions.Center, Color.white, true);
             introText.enableWordWrapping = true;
@@ -251,6 +453,15 @@ namespace UI.InGame
             holeInteractText = AddText(root, "SPACE", 22, TextAlignmentOptions.Center, Color.white, false);
             holeInteractText.rectTransform.sizeDelta = new Vector2(120f, 36f);
             holeInteractText.gameObject.SetActive(false);
+
+            autoSolverStatusText = AddText(root, "", 24, TextAlignmentOptions.Center, new Color(0.55f, 0.85f, 1f, 1f), false);
+            RectTransform solverStatusRect = autoSolverStatusText.rectTransform;
+            solverStatusRect.anchorMin = new Vector2(0.5f, 1f);
+            solverStatusRect.anchorMax = new Vector2(0.5f, 1f);
+            solverStatusRect.pivot = new Vector2(0.5f, 1f);
+            solverStatusRect.anchoredPosition = new Vector2(0f, -18f);
+            solverStatusRect.sizeDelta = new Vector2(760f, 42f);
+            autoSolverStatusText.gameObject.SetActive(false);
 
             pausePopup = BuildPausePopup("PausePopup", false);
             testPausePopup = BuildPausePopup("TestPausePopup", true);
@@ -368,6 +579,7 @@ namespace UI.InGame
 
         public void ResetRuntimeStateAfterStageReset()
         {
+            StopAutoSolverRoutine(true);
             stageSolved = false;
             isJumpingIntoHole = false;
             clearHoleActivated = false;
@@ -406,6 +618,7 @@ namespace UI.InGame
 
             stageSolved = true;
             clearHoleActivated = false;
+            StopAutoSolverRoutine(true);
             isRecordingEditorSolution = false;
 
             if (turnHistoryController != null)

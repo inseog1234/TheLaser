@@ -219,19 +219,19 @@ namespace Player
             TryRotateForwardObject(false);
         }
 
-        private void TryRotateForwardObject(bool clockwise)
+        public bool TryRotateForwardObject(bool clockwise)
         {
             if (!controlsEnabled)
-                return;
+                return false;
 
             if (isMoving)
-                return;
+                return false;
 
             if (objectInteractor == null)
-                return;
+                return false;
 
             if (turnHistoryController != null && turnHistoryController.IsMoveLimitReached)
-                return;
+                return false;
 
             turnHistoryController?.BeginTurn();
 
@@ -241,11 +241,11 @@ namespace Player
             {
                 turnHistoryController?.CommitTurn();
                 NotifySolutionRotate(clockwise);
+                return true;
             }
-            else
-            {
-                turnHistoryController?.CancelTurn();
-            }
+
+            turnHistoryController?.CancelTurn();
+            return false;
         }
 
         private void NotifySolutionMove(GridDirection direction)
