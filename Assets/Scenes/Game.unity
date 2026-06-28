@@ -5119,9 +5119,13 @@ MonoBehaviour:
   stageSolvedShakeStrength: 0.24
   stageSolvedShakeFrequency: 55
   enableEditorAutoSolver: 1
-  autoSolverActionDelay: 0.2
-  autoSolverMaxNodeCount: 10000000
-  autoSolverMaxActionCount: 500
+  autoSolverActionDelay: 0.1
+  autoSolverMaxNodeCount: 2500000
+  autoSolverMaxActionCount: 100
+  autoSolverFastApproximateSearch: 1
+  autoSolverSearchMode: 0
+  autoSolverHeuristicWeight: 4.5
+  autoSolverBeamWidth: 2048
 --- !u!4 &2045987776
 Transform:
   m_ObjectHideFlags: 0

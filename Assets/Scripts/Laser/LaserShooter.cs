@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 using TMPro;
@@ -20,6 +21,8 @@ namespace Laser
         [SerializeField] private TMP_Text laserRemainingText;
         [SerializeField] private string limitedFormat = "레이저 잔여 칸 : {0}칸";
         [SerializeField] private string unlimitedText = "레이저 잔여 칸 : 제한 없음";
+
+        public event Action LaserFiredFromPlayer;
 
         private void Awake()
         {
@@ -66,6 +69,7 @@ namespace Laser
             if (playerGridController.IsMoving || !playerGridController.ControlsEnabled)
                 return;
 
+            LaserFiredFromPlayer?.Invoke();
             Shoot(playerGridController.GridPosition, playerGridController.FacingDirection);
         }
 

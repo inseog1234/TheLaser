@@ -6,7 +6,8 @@ namespace Core
     {
         Move = 0,
         RotateClockwise = 1,
-        RotateCounterClockwise = 2
+        RotateCounterClockwise = 2,
+        FireLaser = 3
     }
 
     [Serializable]
@@ -32,6 +33,8 @@ namespace Core
                     return "시계 회전";
                 case StageSolutionActionType.RotateCounterClockwise:
                     return "반시계 회전";
+                case StageSolutionActionType.FireLaser:
+                    return "레이저 발사";
                 default:
                     return $"이동/방향전환 {direction}";
             }

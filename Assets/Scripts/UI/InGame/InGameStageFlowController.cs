@@ -50,6 +50,10 @@ namespace UI.InGame
         [SerializeField] private float autoSolverActionDelay = 0.3f;
         [SerializeField] private int autoSolverMaxNodeCount = 120000;
         [SerializeField] private int autoSolverMaxActionCount = 80;
+        [SerializeField] private bool autoSolverFastApproximateSearch = true;
+        [SerializeField] private StageAutoSolverSearchMode autoSolverSearchMode = StageAutoSolverSearchMode.WeightedAStar;
+        [SerializeField, Range(1f, 6f)] private float autoSolverHeuristicWeight = 3f;
+        [SerializeField] private int autoSolverBeamWidth = 1024;
 
         private TMP_FontAsset font;
         private Sprite whiteSprite;
@@ -125,14 +129,23 @@ namespace UI.InGame
             if (playerController != null)
                 playerController.SolutionActionPerformed += HandleSolutionActionPerformed;
 
+            if (laserShooter != null)
+                laserShooter.LaserFiredFromPlayer += HandleLaserFiredFromPlayer;
+
             editorRecordedSolutionActions.Clear();
-            isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay;
+            isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay || GameSceneRequest.IsEditorBatchSolutionProcessing;
 
             if (audioController != null && currentStage != null)
                 audioController.PlayBgm(currentStage.bgmEventPath);
 
             RefreshIntroText();
             yield return PlayPlayerSpawnIntro();
+
+            if (GameSceneRequest.IsEditorBatchSolutionProcessing)
+            {
+                StartBatchAutoSolver();
+                yield break;
+            }
 
             if (currentStage != null && currentStage.hasTutorial && currentStage.tutorialPages != null && currentStage.tutorialPages.Count > 0)
                 ShowTutorialPopup();
@@ -154,6 +167,9 @@ namespace UI.InGame
 
             if (playerController != null)
                 playerController.SolutionActionPerformed -= HandleSolutionActionPerformed;
+
+            if (laserShooter != null)
+                laserShooter.LaserFiredFromPlayer -= HandleLaserFiredFromPlayer;
         }
 
         private void Update()
@@ -194,6 +210,17 @@ namespace UI.InGame
         {
             if (!GameSceneRequest.HasRequest || gridManager == null)
                 return;
+
+            if (GameSceneRequest.IsEditorBatchSolutionProcessing)
+            {
+                string batchPath = GameSceneRequest.CurrentBatchSolutionFilePath;
+                if (!string.IsNullOrWhiteSpace(batchPath))
+                    gridManager.LoadStageFromFile(batchPath);
+
+                if (playerController != null)
+                    playerController.ResetToStageStartImmediate();
+                return;
+            }
 
             if (GameSceneRequest.IsEditorTestPlay && GameSceneRequest.HasEditorTestStageData)
             {
@@ -256,10 +283,48 @@ namespace UI.InGame
             if (autoSolverRoutine != null)
                 StopCoroutine(autoSolverRoutine);
 
-            autoSolverRoutine = StartCoroutine(EditorAutoSolverRoutine());
+            autoSolverRoutine = StartCoroutine(EditorAutoSolverRoutine(false));
+        }
+
+        private void StartBatchAutoSolver()
+        {
+            if (isAutoSolverRunning)
+                return;
+
+            if (!GameSceneRequest.IsEditorBatchSolutionProcessing)
+                return;
+
+            if (autoSolverRoutine != null)
+                StopCoroutine(autoSolverRoutine);
+
+            autoSolverRoutine = StartCoroutine(EditorAutoSolverRoutine(true));
         }
 
         private IEnumerator EditorAutoSolverRoutine()
+        {
+            yield return EditorAutoSolverRoutine(false);
+        }
+
+        private string GetAutoSolverSearchLabel()
+        {
+            if (!autoSolverFastApproximateSearch)
+                return "완전 탐색 중";
+
+            switch (autoSolverSearchMode)
+            {
+                case StageAutoSolverSearchMode.BalancedAStar:
+                    return "균형 A* 탐색 중";
+                case StageAutoSolverSearchMode.BeamSearch:
+                    return "Beam Search 탐색 중";
+                case StageAutoSolverSearchMode.BreadthFirst:
+                    return "완전 탐색 중";
+                case StageAutoSolverSearchMode.WeightedAStar:
+                default:
+                    return "Weighted A* 탐색 중";
+            }
+        }
+
+        private IEnumerator EditorAutoSolverRoutine(bool batchMode)
         {
             isAutoSolverRunning = true;
             previousInputEnabledBeforeAutoSolver = inputReader == null || inputReader.InputEnabled;
@@ -270,11 +335,37 @@ namespace UI.InGame
             if (playerController != null)
                 playerController.SetControlsEnabled(false);
 
-            ShowAutoSolverStatus($"AI 풀이 탐색 중... {autoSolverSpeedMultiplier}배속", new Color(0.55f, 0.85f, 1f, 1f));
+            string searchLabel = GetAutoSolverSearchLabel();
+            ShowAutoSolverStatus($"{searchLabel}... {autoSolverSpeedMultiplier}배속  노드 0/{autoSolverMaxNodeCount}", new Color(0.55f, 0.85f, 1f, 1f));
             yield return null;
 
             StageData solveTarget = autoSolverInitialStageData != null ? autoSolverInitialStageData.Clone() : currentStage != null ? currentStage.Clone() : null;
-            bool solved = StageAutoSolver.TrySolve(solveTarget, out List<StageSolutionActionData> solutionActions, out string solveMessage, autoSolverMaxNodeCount, autoSolverMaxActionCount);
+            bool solved = false;
+            List<StageSolutionActionData> solutionActions = new List<StageSolutionActionData>();
+            string solveMessage = string.Empty;
+            int finalNodeCount = 0;
+
+            yield return StageAutoSolver.SolveCoroutine(
+                solveTarget,
+                (nodeCount, nodeLimit) =>
+                {
+                    finalNodeCount = nodeCount;
+                    ShowAutoSolverStatus($"{searchLabel}... {autoSolverSpeedMultiplier}배속  노드 {nodeCount}/{nodeLimit}", new Color(0.55f, 0.85f, 1f, 1f));
+                },
+                (result, actions, message, nodeCount) =>
+                {
+                    solved = result;
+                    solutionActions = actions ?? new List<StageSolutionActionData>();
+                    solveMessage = message;
+                    finalNodeCount = nodeCount;
+                },
+                autoSolverMaxNodeCount,
+                autoSolverMaxActionCount,
+                256,
+                autoSolverFastApproximateSearch,
+                autoSolverBeamWidth,
+                autoSolverSearchMode,
+                autoSolverHeuristicWeight);
 
             if (!solved)
             {
@@ -282,9 +373,19 @@ namespace UI.InGame
                 RestoreInputAfterAutoSolver();
                 isAutoSolverRunning = false;
                 autoSolverRoutine = null;
+
+                if (batchMode)
+                {
+                    GameSceneRequest.ReportCurrentBatchSolutionResult(false, solveMessage);
+                    yield return new WaitForSeconds(0.8f);
+                    LoadNextBatchStageOrReturnEditor(false);
+                }
+
                 yield break;
             }
 
+            ShowAutoSolverStatus($"AI 풀이 발견  노드 {finalNodeCount}/{autoSolverMaxNodeCount}  /  {solutionActions.Count} 행동", new Color(0.55f, 0.85f, 1f, 1f));
+            yield return new WaitForSeconds(0.2f);
             ShowAutoSolverStatus($"AI 풀이 실행 중... {autoSolverSpeedMultiplier}배속 / {solutionActions.Count} 행동", new Color(0.55f, 0.85f, 1f, 1f));
             ResetStageForAutoSolverPlayback(solveTarget);
 
@@ -313,9 +414,195 @@ namespace UI.InGame
                 laserShooter.ShootFromPlayer();
             }
 
+            if (batchMode)
+            {
+                yield return BatchAutoSolverFinishRoutine();
+                yield break;
+            }
+
             RestoreInputAfterAutoSolver();
             isAutoSolverRunning = false;
             autoSolverRoutine = null;
+        }
+
+        private IEnumerator BatchAutoSolverFinishRoutine()
+        {
+            float waitSolved = 0f;
+            while (!stageSolved && waitSolved < 3f)
+            {
+                waitSolved += Time.deltaTime;
+                yield return null;
+            }
+
+            if (!stageSolved)
+            {
+                string message = "AI가 레이저를 발사했지만 도착지에 닿지 못했습니다.";
+                ShowAutoSolverStatus(message, new Color(1f, 0.35f, 0.35f, 1f));
+                GameSceneRequest.ReportCurrentBatchSolutionResult(false, message);
+                RestoreInputAfterAutoSolver();
+                isAutoSolverRunning = false;
+                autoSolverRoutine = null;
+                yield return new WaitForSeconds(0.8f);
+                LoadNextBatchStageOrReturnEditor(false);
+                yield break;
+            }
+
+            float waitHole = 0f;
+            while (!clearHoleActivated && waitHole < 5f)
+            {
+                waitHole += Time.deltaTime;
+                yield return null;
+            }
+
+            if (!clearHoleActivated)
+            {
+                string message = "클리어 후 구멍이 생성되지 않았습니다.";
+                ShowAutoSolverStatus(message, new Color(1f, 0.35f, 0.35f, 1f));
+                GameSceneRequest.ReportCurrentBatchSolutionResult(false, message);
+                RestoreInputAfterAutoSolver();
+                isAutoSolverRunning = false;
+                autoSolverRoutine = null;
+                yield return new WaitForSeconds(0.8f);
+                LoadNextBatchStageOrReturnEditor(false);
+                yield break;
+            }
+
+            yield return MovePlayerToHoleAndEnterRoutine();
+        }
+
+        private IEnumerator MovePlayerToHoleAndEnterRoutine()
+        {
+            if (playerController == null || gridManager == null)
+                yield break;
+
+            playerController.SetControlsEnabled(true);
+
+            if (laserShooter != null)
+                laserShooter.ClearLaser();
+
+            if (!IsPlayerAdjacentToClearHole())
+            {
+                if (!TryFindPathToClearHoleAdjacent(out List<GridDirection> path))
+                {
+                    string message = "구멍까지 이동할 경로를 찾지 못했습니다.";
+                    ShowAutoSolverStatus(message, new Color(1f, 0.35f, 0.35f, 1f));
+                    GameSceneRequest.ReportCurrentBatchSolutionResult(false, message);
+                    RestoreInputAfterAutoSolver();
+                    isAutoSolverRunning = false;
+                    autoSolverRoutine = null;
+                    yield return new WaitForSeconds(0.8f);
+                    LoadNextBatchStageOrReturnEditor(false);
+                    yield break;
+                }
+
+                for (int i = 0; i < path.Count; i++)
+                {
+                    if (laserShooter != null)
+                        laserShooter.ClearLaser();
+
+                    playerController.TryMove(path[i]);
+                    while (playerController != null && playerController.IsMoving)
+                        yield return null;
+
+                    ShowAutoSolverStatus($"구멍으로 이동 중... {i + 1}/{path.Count}", new Color(0.55f, 0.85f, 1f, 1f));
+                    float waitTime = autoSolverSpeedMultiplier <= 0 ? autoSolverActionDelay : autoSolverActionDelay / autoSolverSpeedMultiplier;
+                    yield return new WaitForSeconds(waitTime);
+                }
+            }
+
+            RestoreInputAfterAutoSolver();
+            isAutoSolverRunning = false;
+            autoSolverRoutine = null;
+
+            if (IsPlayerAdjacentToClearHole())
+                StartCoroutine(JumpIntoHoleRoutine());
+            else
+                LoadNextBatchStageOrReturnEditor(false);
+        }
+
+        private bool IsPlayerAdjacentToClearHole()
+        {
+            if (playerController == null || gridManager == null)
+                return false;
+
+            Vector2Int hole = gridManager.ClearHolePosition;
+            return Mathf.Abs(playerController.GridPosition.x - hole.x) + Mathf.Abs(playerController.GridPosition.y - hole.y) == 1;
+        }
+
+        private bool TryFindPathToClearHoleAdjacent(out List<GridDirection> path)
+        {
+            path = new List<GridDirection>();
+
+            if (playerController == null || gridManager == null)
+                return false;
+
+            Vector2Int start = playerController.GridPosition;
+            Vector2Int hole = gridManager.ClearHolePosition;
+            GridDirection[] directions = { GridDirection.Up, GridDirection.Right, GridDirection.Down, GridDirection.Left };
+            Queue<Vector2Int> queue = new Queue<Vector2Int>();
+            Dictionary<Vector2Int, Vector2Int> parent = new Dictionary<Vector2Int, Vector2Int>();
+            Dictionary<Vector2Int, GridDirection> parentDirection = new Dictionary<Vector2Int, GridDirection>();
+            HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
+
+            queue.Enqueue(start);
+            visited.Add(start);
+
+            Vector2Int found = start;
+            bool hasFound = IsAdjacent(start, hole);
+
+            while (queue.Count > 0 && !hasFound)
+            {
+                Vector2Int current = queue.Dequeue();
+
+                for (int i = 0; i < directions.Length; i++)
+                {
+                    GridDirection direction = directions[i];
+                    Vector2Int next = current + direction.ToVector();
+
+                    if (visited.Contains(next))
+                        continue;
+
+                    if (!gridManager.IsInside(next))
+                        continue;
+
+                    if (!gridManager.IsWalkable(next))
+                        continue;
+
+                    visited.Add(next);
+                    parent[next] = current;
+                    parentDirection[next] = direction;
+
+                    if (IsAdjacent(next, hole))
+                    {
+                        found = next;
+                        hasFound = true;
+                        break;
+                    }
+
+                    queue.Enqueue(next);
+                }
+            }
+
+            if (!hasFound)
+                return false;
+
+            List<GridDirection> reversed = new List<GridDirection>();
+            Vector2Int cursor = found;
+            while (cursor != start)
+            {
+                GridDirection direction = parentDirection[cursor];
+                reversed.Add(direction);
+                cursor = parent[cursor];
+            }
+
+            reversed.Reverse();
+            path = reversed;
+            return true;
+        }
+
+        private bool IsAdjacent(Vector2Int a, Vector2Int b)
+        {
+            return Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) == 1;
         }
 
         private void ResetStageForAutoSolverPlayback(StageData stageData)
@@ -339,7 +626,7 @@ namespace UI.InGame
             gridManager.LoadStage(stageData.Clone());
             currentStage = gridManager.CurrentStageData;
             editorRecordedSolutionActions.Clear();
-            isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay;
+            isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay || GameSceneRequest.IsEditorBatchSolutionProcessing;
 
             if (playerController != null)
                 playerController.ResetToStageStartImmediate();
@@ -358,8 +645,15 @@ namespace UI.InGame
             if (action == null || playerController == null)
                 return;
 
+            if (laserShooter != null)
+                laserShooter.ClearLaser();
+
             switch (action.actionType)
             {
+                case StageSolutionActionType.FireLaser:
+                    laserShooter?.ShootFromPlayer();
+                    break;
+
                 case StageSolutionActionType.RotateClockwise:
                     playerController.TryRotateForwardObject(true);
                     break;
@@ -405,6 +699,15 @@ namespace UI.InGame
             autoSolverStatusText.text = text;
             autoSolverStatusText.color = color;
             autoSolverStatusText.gameObject.SetActive(true);
+        }
+
+        private void HandleLaserFiredFromPlayer()
+        {
+            HandleSolutionActionPerformed(new StageSolutionActionData
+            {
+                actionType = StageSolutionActionType.FireLaser,
+                direction = playerController != null ? playerController.FacingDirection : GridDirection.Right
+            });
         }
 
         private void HandleSolutionActionPerformed(StageSolutionActionData action)
@@ -618,7 +921,8 @@ namespace UI.InGame
 
             stageSolved = true;
             clearHoleActivated = false;
-            StopAutoSolverRoutine(true);
+            if (!isAutoSolverRunning)
+                StopAutoSolverRoutine(true);
             isRecordingEditorSolution = false;
 
             if (turnHistoryController != null)
@@ -769,11 +1073,75 @@ namespace UI.InGame
                 audioController.PlaySfx(FmodRuntimeAudio.SfxStageClear);
 
             yield return SceneFadeController.Instance.Fade(1f, 0.35f);
+            if (GameSceneRequest.IsEditorBatchSolutionProcessing)
+            {
+                SaveBatchSolutionToCurrentFile();
+                LoadNextBatchStageOrReturnEditor(true);
+                yield break;
+            }
+
             if (GameSceneRequest.IsEditorTestPlay)
                 GameSceneRequest.SetEditorTestRecordedSolution(editorRecordedSolutionActions);
             else
                 StageProgressManager.MarkCleared(currentStage);
             LoadNextStageOrReturnTitle();
+        }
+
+        private void SaveBatchSolutionToCurrentFile()
+        {
+            string filePath = GameSceneRequest.CurrentBatchSolutionFilePath;
+            if (currentStage == null || string.IsNullOrWhiteSpace(filePath))
+            {
+                GameSceneRequest.ReportCurrentBatchSolutionResult(false, "저장할 스테이지 파일 경로가 없습니다.");
+                return;
+            }
+
+            currentStage.solutionActions = CloneSolutionActions(editorRecordedSolutionActions);
+
+            try
+            {
+                StageBinarySerializer.Save(currentStage, filePath);
+                GameSceneRequest.ReportCurrentBatchSolutionResult(true, $"답안 저장 완료: {Path.GetFileName(filePath)} / {currentStage.solutionActions.Count} 행동");
+            }
+            catch (Exception exception)
+            {
+                GameSceneRequest.ReportCurrentBatchSolutionResult(false, $"답안 저장 실패: {exception.Message}");
+            }
+        }
+
+        private static List<StageSolutionActionData> CloneSolutionActions(List<StageSolutionActionData> source)
+        {
+            List<StageSolutionActionData> result = new List<StageSolutionActionData>();
+            if (source == null)
+                return result;
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                if (source[i] != null)
+                    result.Add(source[i].Clone());
+            }
+
+            return result;
+        }
+
+        private void LoadNextBatchStageOrReturnEditor(bool fromCurrentFade)
+        {
+            string returnScene = string.IsNullOrWhiteSpace(GameSceneRequest.ReturnSceneName) ? "LevelEditor" : GameSceneRequest.ReturnSceneName;
+
+            if (GameSceneRequest.MoveToNextBatchSolutionStage())
+            {
+                string activeSceneName = SceneManager.GetActiveScene().name;
+                if (fromCurrentFade)
+                    SceneFadeController.Instance.LoadSceneFromCurrentFade(string.IsNullOrWhiteSpace(activeSceneName) ? gameSceneName : activeSceneName, 0.2f);
+                else
+                    SceneFadeController.Instance.LoadScene(string.IsNullOrWhiteSpace(activeSceneName) ? gameSceneName : activeSceneName, 0.2f);
+                return;
+            }
+
+            if (fromCurrentFade)
+                SceneFadeController.Instance.LoadSceneFromCurrentFade(returnScene, 0.35f);
+            else
+                SceneFadeController.Instance.LoadScene(returnScene, 0.35f);
         }
 
         private void LoadNextStageOrReturnTitle()

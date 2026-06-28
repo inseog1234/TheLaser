@@ -73,6 +73,7 @@ namespace LevelEditor
         [SerializeField] private int defaultLaserMaxDistance = 8;
         [SerializeField] private int defaultMoveLimit = 0;
         [SerializeField] private bool allowBuiltInLevelLoad;
+        [SerializeField] private bool helpTool;
 
         [Header("Camera")]
         [SerializeField] private Camera editorCamera;
@@ -104,6 +105,7 @@ namespace LevelEditor
         private RectTransform savePopup;
         private RectTransform uploadPopup;
         private RectTransform solutionOverwritePopup;
+        private RectTransform batchSolutionPopup;
         private RectTransform helpPanel;
         private Button uploadButton;
         private Button uploadPublishButton;
@@ -122,6 +124,8 @@ namespace LevelEditor
         private TMP_Text gridInfoText;
         private TMP_Text currentFileText;
         private TMP_Text solutionOverwriteInfoText;
+        private TMP_Text batchSolutionInfoText;
+        private Button batchSolutionProcessButton;
         private TMP_InputField runtimeStageNameInput;
         private TMP_InputField runtimeWidthInput;
         private TMP_InputField runtimeHeightInput;
@@ -171,6 +175,7 @@ namespace LevelEditor
         private string selectedSaveDirectory;
         private string selectedSaveFileName = "CustomLevel";
         private List<StageSolutionActionData> pendingReturnedSolutionActions;
+        private List<string> selectedBatchSolutionFilePaths = new();
         private FmodRuntimeAudio audioController;
         private int editorBgmIndex = 10;
         private bool suppressRuntimeSettingEvent;
@@ -206,6 +211,8 @@ namespace LevelEditor
                 CreateNewLevel(defaultWidth, defaultHeight, defaultLaserMaxDistance, defaultMoveLimit, false);
                 ShowMainPopup();
             }
+
+            HandleReturnedBatchSolutionResult();
 
             StartCoroutine(EditorTutorialRoutine());
         }
@@ -377,6 +384,88 @@ namespace LevelEditor
             }
 
             return result;
+        }
+
+        private void HandleReturnedBatchSolutionResult()
+        {
+            if (!GameSceneRequest.TryConsumeBatchSolutionResult(out int totalCount, out int solvedCount, out int failedCount, out string lastMessage))
+                return;
+
+            SetStatus($"다중 AI 해답 처리 완료: 성공 {solvedCount}/{totalCount}, 실패 {failedCount}");
+
+            if (!string.IsNullOrWhiteSpace(lastMessage))
+                Debug.Log($"[LevelEditor] Batch solution result: {lastMessage}");
+        }
+
+        private void ShowBatchSolutionPopup()
+        {
+            if (!helpTool)
+                return;
+
+            selectedBatchSolutionFilePaths.Clear();
+            HideAllPopups();
+            if (batchSolutionPopup != null)
+                batchSolutionPopup.gameObject.SetActive(true);
+
+            RefreshBatchSolutionProcessButton();
+        }
+
+        private void PickBatchSolutionFiles()
+        {
+            if (!CanOpenNativeFileDialog())
+                return;
+
+            BeginNativeFileDialog();
+            string[] paths = NativeFileDialogUtility.OpenTlsFilesPanel("AI 해답을 자동 생성할 .tls 파일 선택", StageFilePaths.MyCustomLevelsDirectory);
+            EndNativeFileDialog();
+
+            selectedBatchSolutionFilePaths.Clear();
+
+            if (paths != null)
+            {
+                for (int i = 0; i < paths.Length; i++)
+                {
+                    string path = paths[i];
+                    if (string.IsNullOrWhiteSpace(path))
+                        continue;
+
+                    if (!File.Exists(path))
+                        continue;
+
+                    if (!string.Equals(Path.GetExtension(path), StageFilePaths.StageExtension, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (!selectedBatchSolutionFilePaths.Contains(path))
+                        selectedBatchSolutionFilePaths.Add(path);
+                }
+            }
+
+            RefreshBatchSolutionProcessButton();
+        }
+
+        private void RefreshBatchSolutionProcessButton()
+        {
+            int count = selectedBatchSolutionFilePaths != null ? selectedBatchSolutionFilePaths.Count : 0;
+
+            if (batchSolutionInfoText != null)
+            {
+                batchSolutionInfoText.text = count <= 0
+                    ? "처리할 .tls 맵 파일을 여러 개 선택하세요.\n선택한 맵은 Game 씬에서 AI가 하나씩 풀고, 답안을 새로 기록해서 파일에 덮어씁니다."
+                    : $"선택된 맵: {count}개\n처리하기를 누르면 Game 씬으로 이동해 AI가 순서대로 해답을 생성합니다.";
+            }
+
+            if (batchSolutionProcessButton != null)
+                batchSolutionProcessButton.interactable = count > 0;
+        }
+
+        private void StartBatchSolutionProcessing()
+        {
+            if (selectedBatchSolutionFilePaths == null || selectedBatchSolutionFilePaths.Count <= 0)
+                return;
+
+            List<string> paths = new List<string>(selectedBatchSolutionFilePaths);
+            GameSceneRequest.RequestEditorBatchSolution(paths, SceneManager.GetActiveScene().name);
+            SceneFadeController.Instance.LoadScene("Game");
         }
 
         public void LoadLevelFromInputPath()
@@ -663,6 +752,7 @@ namespace LevelEditor
             BuildSavePopup();
             BuildUploadPopup();
             BuildSolutionOverwritePopup();
+            BuildBatchSolutionPopup();
             RebuildPalette();
             HideAllPopups();
         }
@@ -770,9 +860,13 @@ namespace LevelEditor
 
         private void BuildMainPopup()
         {
-            mainPopup = CreateModalPanel("MainPopup", 560f, 450f, "레벨 에디터");
+            mainPopup = CreateModalPanel("MainPopup", 560f, helpTool ? 540f : 450f, "레벨 에디터");
             AddButton(mainPopup, "레벨 생성", ShowNewLevelPopup, 460f, 54f);
             AddButton(mainPopup, "레벨 불러오기", ShowLoadPopup, 460f, 54f);
+
+            if (helpTool)
+                AddButton(mainPopup, "다중 스테이지 AI 해답 자동 처리", ShowBatchSolutionPopup, 460f, 54f);
+
             editorBgmDropdown = AddDropdownRow(mainPopup, "에디터 BGM", BgmDisplayNames(), editorBgmIndex, SetEditorBgmFromDropdown);
             TMP_Text info = AddText(mainPopup, "ESC로 이 메뉴를 열고 닫을 수 있습니다.", 17, TextAlignmentOptions.Center, new Color(0.8f, 0.86f, 0.95f, 1f));
             info.enableWordWrapping = true;
@@ -843,6 +937,20 @@ namespace LevelEditor
             solutionOverwriteInfoText.GetComponent<LayoutElement>().preferredHeight = 90f;
             AddButton(solutionOverwritePopup, "네", ConfirmOverwriteSolution, 560f, 52f);
             AddButton(solutionOverwritePopup, "아니오", KeepExistingSolution, 560f, 46f);
+        }
+
+
+        private void BuildBatchSolutionPopup()
+        {
+            batchSolutionPopup = CreateModalPanel("BatchSolutionPopup", 720f, 430f, "다중 스테이지 AI 해답 자동 처리");
+            batchSolutionInfoText = AddText(batchSolutionPopup, "처리할 .tls 맵 파일을 여러 개 선택하세요.\n선택한 맵은 Game 씬에서 AI가 하나씩 풀고, 답안을 새로 기록해서 파일에 덮어씁니다.", 19, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 0.98f, 1f));
+            batchSolutionInfoText.enableWordWrapping = true;
+            batchSolutionInfoText.overflowMode = TextOverflowModes.Overflow;
+            batchSolutionInfoText.GetComponent<LayoutElement>().preferredHeight = 120f;
+            AddButton(batchSolutionPopup, "맵 파일 여러 개 선택", PickBatchSolutionFiles, 620f, 52f);
+            batchSolutionProcessButton = AddButton(batchSolutionPopup, "처리하기", StartBatchSolutionProcessing, 620f, 52f);
+            AddButton(batchSolutionPopup, "취소", () => HideAllPopups(), 620f, 42f);
+            RefreshBatchSolutionProcessButton();
         }
 
         private RectTransform CreateModalPanel(string name, float width, float height, string title)
@@ -3382,6 +3490,7 @@ namespace LevelEditor
             if (savePopup != null) savePopup.gameObject.SetActive(false);
             if (uploadPopup != null) uploadPopup.gameObject.SetActive(false);
             if (solutionOverwritePopup != null) solutionOverwritePopup.gameObject.SetActive(false);
+            if (batchSolutionPopup != null) batchSolutionPopup.gameObject.SetActive(false);
 
             if (playSound && hadOpenPopup)
                 PlayEditorSfx(FmodRuntimeAudio.SfxUiClose);

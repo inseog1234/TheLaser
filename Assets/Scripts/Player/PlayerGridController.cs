@@ -295,6 +295,38 @@ namespace Player
             RefreshDirectionView();
         }
 
+        public IEnumerator MoveToRuntimeStateRoutine(Vector2Int newGridPosition, GridDirection newFacingDirection, float duration)
+        {
+            if (moveCoroutine != null)
+            {
+                StopCoroutine(moveCoroutine);
+                moveCoroutine = null;
+            }
+
+            isMoving = true;
+            facingDirection = newFacingDirection;
+            RefreshDirectionView();
+
+            Vector3 startWorldPosition = transform.position;
+            Vector3 targetWorldPosition = gridManager != null ? gridManager.GridToWorld(newGridPosition) : startWorldPosition;
+            float safeDuration = Mathf.Max(0f, duration);
+            float elapsedTime = 0f;
+
+            while (elapsedTime < safeDuration)
+            {
+                elapsedTime += Time.deltaTime;
+                float t = safeDuration <= 0f ? 1f : Mathf.Clamp01(elapsedTime / safeDuration);
+                transform.position = Vector3.Lerp(startWorldPosition, targetWorldPosition, t);
+                yield return null;
+            }
+
+            gridPosition = newGridPosition;
+            facingDirection = newFacingDirection;
+            transform.position = targetWorldPosition;
+            RefreshDirectionView();
+            isMoving = false;
+        }
+
         public void ResetToStageStartImmediate()
         {
             if (moveCoroutine != null)
