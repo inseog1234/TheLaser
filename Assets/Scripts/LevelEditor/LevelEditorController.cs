@@ -110,6 +110,9 @@ namespace LevelEditor
         private TMP_InputField uploadNicknameInput;
         private TMP_InputField uploadTitleInput;
         private TMP_InputField uploadDescriptionInput;
+        private TMP_Text uploadDescriptionCounterText;
+        private LayoutElement uploadDescriptionRowLayout;
+        private LayoutElement uploadDescriptionInputLayout;
         private TMP_Text uploadValidationText;
         private TMP_Text editorOnlineNoticeText;
         private Coroutine editorNoticeRoutine;
@@ -818,10 +821,11 @@ namespace LevelEditor
 
         private void BuildUploadPopup()
         {
-            uploadPopup = CreateModalPanel("UploadPopup", 700f, 560f, "커스텀 맵 업로드");
+            uploadPopup = CreateModalPanel("UploadPopup", 700f, 700f, "커스텀 맵 업로드");
             uploadNicknameInput = AddInputRow(uploadPopup, "닉네임", "", value => RefreshUploadPublishButton());
             uploadTitleInput = AddInputRow(uploadPopup, "게시물 이름", editingStageData != null ? editingStageData.stageName : "", value => RefreshUploadPublishButton());
-            uploadDescriptionInput = AddInputRow(uploadPopup, "게시물 설명", "", value => RefreshUploadPublishButton());
+            uploadTitleInput.characterLimit = SupabaseConfig.PostTitleCharacterLimit;
+            uploadDescriptionInput = AddMultilineInputRow(uploadPopup, "게시물 설명", "", SupabaseConfig.PostDescriptionCharacterLimit, value => RefreshUploadPublishButton());
             uploadValidationText = AddText(uploadPopup, "답안이 있는 맵만 업로드할 수 있습니다.", 18, TextAlignmentOptions.Left, new Color(0.85f, 0.9f, 1f, 1f));
             uploadValidationText.enableWordWrapping = true;
             uploadValidationText.overflowMode = TextOverflowModes.Overflow;
@@ -979,23 +983,13 @@ namespace LevelEditor
 
                 if (isSettingsPanelExpanded)
                 {
-                    bottomActionPanel.offsetMin = hasUploadButton
-                        ? new Vector2(-104f, 16f)
-                        : new Vector2(-54f, 16f);
-
-                    bottomActionPanel.offsetMax = hasUploadButton
-                        ? new Vector2(376f, 70f)
-                        : new Vector2(326f, 70f);
+                    bottomActionPanel.offsetMin = hasUploadButton ? new Vector2(-104f, 16f) : new Vector2(-54f, 16f);
+                    bottomActionPanel.offsetMax = hasUploadButton ? new Vector2(376f, 70f) : new Vector2(326f, 70f);
                 }
                 else
                 {
-                    bottomActionPanel.offsetMin = hasUploadButton
-                        ? new Vector2(-245f, 16f)
-                        : new Vector2(-190f, 16f);
-
-                    bottomActionPanel.offsetMax = hasUploadButton
-                        ? new Vector2(245f, 70f)
-                        : new Vector2(190f, 70f);
+                    bottomActionPanel.offsetMin = hasUploadButton ? new Vector2(-245f, 16f) : new Vector2(-190f, 16f);
+                    bottomActionPanel.offsetMax = hasUploadButton ? new Vector2(245f, 70f) : new Vector2(190f, 70f);
                 }
             }
         }
@@ -3278,6 +3272,7 @@ namespace LevelEditor
                 uploadTitleInput.SetTextWithoutNotify(string.IsNullOrWhiteSpace(editingStageData.stageName) ? selectedSaveFileName : editingStageData.stageName);
 
             RefreshUploadPublishButton();
+            RefreshUploadDescriptionLayout();
             PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
         }
 
@@ -3288,12 +3283,12 @@ namespace LevelEditor
 
             bool canShow = editingStageData != null && editingStageData.HasSolution;
             uploadButton.gameObject.SetActive(canShow);
-
             ApplyFloatingPanelsLayout();
         }
 
         private void RefreshUploadPublishButton()
         {
+            RefreshUploadDescriptionLayout();
             bool hasInputs = uploadNicknameInput != null && uploadTitleInput != null && uploadDescriptionInput != null &&
                 !string.IsNullOrWhiteSpace(uploadNicknameInput.text) &&
                 !string.IsNullOrWhiteSpace(uploadTitleInput.text) &&
@@ -3507,6 +3502,69 @@ namespace LevelEditor
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
             return button;
+        }
+
+        private TMP_InputField AddMultilineInputRow(Transform parent, string label, string value, int characterLimit, Action<string> onChanged)
+        {
+            RectTransform row = CreateUIObject(label + "MultilineRow", parent);
+            VerticalLayoutGroup vertical = AddVerticalLayout(row, 0, 0, 0, 0, 4);
+            vertical.childForceExpandHeight = false;
+            uploadDescriptionRowLayout = row.gameObject.AddComponent<LayoutElement>();
+            uploadDescriptionRowLayout.preferredHeight = 154f;
+
+            TMP_Text labelText = AddText(row, label, 17, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 1f, 1f));
+            labelText.GetComponent<LayoutElement>().preferredHeight = 26f;
+
+            uploadDescriptionInput = CreateInputField(row, value);
+            uploadDescriptionInput.lineType = TMP_InputField.LineType.MultiLineNewline;
+            uploadDescriptionInput.characterLimit = characterLimit;
+            uploadDescriptionInput.textComponent.enableWordWrapping = true;
+            uploadDescriptionInput.textComponent.overflowMode = TextOverflowModes.Overflow;
+            if (uploadDescriptionInput.textViewport != null)
+            {
+                uploadDescriptionInput.textViewport.offsetMin = new Vector2(8f, 8f);
+                uploadDescriptionInput.textViewport.offsetMax = new Vector2(-8f, -8f);
+            }
+            uploadDescriptionInput.textComponent.rectTransform.offsetMin = new Vector2(8f, 8f);
+            uploadDescriptionInput.textComponent.rectTransform.offsetMax = new Vector2(-8f, -8f);
+            uploadDescriptionInputLayout = uploadDescriptionInput.GetComponent<LayoutElement>();
+            uploadDescriptionInputLayout.preferredHeight = 108f;
+            uploadDescriptionInput.onValueChanged.AddListener(text => { onChanged?.Invoke(text); RefreshUploadDescriptionLayout(); });
+            uploadDescriptionInput.onEndEdit.AddListener(text => { PlayEditorSfx(FmodRuntimeAudio.SfxEditorCheckBox); onChanged?.Invoke(text); RefreshUploadDescriptionLayout(); });
+            runtimeSettingSelectables.Add(uploadDescriptionInput);
+
+            uploadDescriptionCounterText = AddText(row, "0 / " + characterLimit, 15, TextAlignmentOptions.Left, new Color(0.72f, 0.82f, 0.92f, 1f));
+            uploadDescriptionCounterText.GetComponent<LayoutElement>().preferredHeight = 22f;
+            RefreshUploadDescriptionLayout();
+            return uploadDescriptionInput;
+        }
+
+        private void RefreshUploadDescriptionLayout()
+        {
+            if (uploadDescriptionInput == null)
+                return;
+
+            int limit = Mathf.Max(1, SupabaseConfig.PostDescriptionCharacterLimit);
+            int length = uploadDescriptionInput.text != null ? uploadDescriptionInput.text.Length : 0;
+            if (uploadDescriptionCounterText != null)
+            {
+                uploadDescriptionCounterText.text = length + " / " + limit;
+                uploadDescriptionCounterText.color = length >= limit ? new Color(1f, 0.55f, 0.45f, 1f) : new Color(0.72f, 0.82f, 0.92f, 1f);
+            }
+
+            float preferredTextHeight = uploadDescriptionInput.textComponent != null ? uploadDescriptionInput.textComponent.preferredHeight + 30f : 108f;
+            float inputHeight = Mathf.Max(108f, preferredTextHeight);
+            if (uploadDescriptionInputLayout != null)
+                uploadDescriptionInputLayout.preferredHeight = inputHeight;
+            if (uploadDescriptionRowLayout != null)
+                uploadDescriptionRowLayout.preferredHeight = inputHeight + 54f;
+
+            if (uploadPopup != null)
+            {
+                float extra = Mathf.Max(0f, inputHeight - 108f);
+                uploadPopup.offsetMin = new Vector2(-350f, -350f - extra);
+                uploadPopup.offsetMax = new Vector2(350f, 350f);
+            }
         }
 
         private TMP_InputField AddInputRow(Transform parent, string label, string value, Action<string> onEndEdit)

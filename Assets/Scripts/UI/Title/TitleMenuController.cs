@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using Core;
@@ -33,13 +34,28 @@ namespace UI.Title
         private RectTransform customLevelPopup;
         private RectTransform customDownloadPopup;
         private RectTransform customDownloadContent;
+        private RectTransform customManagePopup;
+        private RectTransform customManageContent;
+        private RectTransform customEditPopup;
         private RectTransform settingsPopup;
         private string selectedCustomLevelPath;
         private CustomLevelPostData selectedDownloadPost;
+        private CustomLevelPostData selectedManagedPost;
         private Button downloadSelectedButton;
+        private Button managePlayButton;
+        private Button manageDeleteButton;
+        private Button manageEditButton;
+        private Button editSaveButton;
+        private TMP_InputField editTitleInput;
+        private TMP_InputField editDescriptionInput;
+        private TMP_InputField editMapPathInput;
+        private TMP_Text editValidationText;
+        private string editSelectedMapPath;
+        private StageData editSelectedStageData;
         private TMP_Text titleOnlineNoticeText;
         private Coroutine titleNoticeRoutine;
         private readonly List<CustomLevelPostData> downloadedPosts = new();
+        private readonly List<CustomLevelPostData> managedPosts = new();
         private FmodRuntimeAudio audioController;
 
         private void Awake()
@@ -100,6 +116,8 @@ namespace UI.Title
             BuildCustomPopup();
             BuildCustomLevelPopup();
             BuildCustomDownloadPopup();
+            BuildCustomManagePopup();
+            BuildCustomEditPopup();
             BuildSettingsPopup();
             BuildTitleOnlineNotice();
             HideAllPopups(false);
@@ -129,7 +147,8 @@ namespace UI.Title
             for (int i = 0; i < keys.Count; i++)
                 AddChapterBlock(content, keys[i], byChapter[keys[i]]);
 
-            AddText(stagePopup, "모든 챕터는 5스테이지까지 진행하면 다음 챕터가 해금 됩니다.", 16, TextAlignmentOptions.Center, new Color(0.55f, 0.9f, 1f, 1f), true);
+            TMP_Text unlockNotice = AddText(stagePopup, "모든 챕터는 5스테이지까지 진행하면 다음 챕터가 해금 됩니다.", 16, TextAlignmentOptions.Center, new Color(0.55f, 0.9f, 1f, 1f), true);
+            unlockNotice.GetComponent<LayoutElement>().preferredHeight = 42f;
             AddButton(stagePopup, "닫기", HideAllPopups, 420f, 48f);
         }
 
@@ -163,8 +182,9 @@ namespace UI.Title
 
         private void BuildCustomPopup()
         {
-            customPopup = CreateModal("CustomPopup", 520f, 400f, "커스텀");
+            customPopup = CreateModal("CustomPopup", 520f, 470f, "커스텀");
             AddButton(customPopup, "레벨 플레이", ShowCustomLevelPopup, 420f, 58f);
+            AddButton(customPopup, "내 레벨 관리", ShowCustomManagePopup, 420f, 58f);
             AddButton(customPopup, "레벨 다운로드", ShowCustomDownloadPopup, 420f, 58f);
             AddButton(customPopup, "레벨 만들기", OpenLevelEditor, 420f, 58f);
             AddButton(customPopup, "닫기", HideAllPopups, 420f, 44f);
@@ -205,6 +225,40 @@ namespace UI.Title
             downloadSelectedButton.interactable = false;
             AddButton(customDownloadPopup, "새로고침", RefreshOnlineLevelList, 760f, 44f);
             AddButton(customDownloadPopup, "닫기", HideAllPopups, 760f, 42f);
+        }
+
+        private void BuildCustomManagePopup()
+        {
+            customManagePopup = CreateModal("CustomManagePopup", 900f, 760f, "내 레벨 관리");
+            ScrollRect scroll = CreateScroll(customManagePopup, "CustomManageScroll", out customManageContent);
+            scroll.GetComponent<LayoutElement>().preferredHeight = 470f;
+            managePlayButton = AddButton(customManagePopup, "플레이", PlaySelectedManagedPost, 800f, 50f);
+            manageDeleteButton = AddButton(customManagePopup, "삭제", DeleteSelectedManagedPost, 800f, 46f);
+            manageEditButton = AddButton(customManagePopup, "게시물 수정", ShowEditManagedPostPopup, 800f, 46f);
+            AddButton(customManagePopup, "새로고침", RefreshManagedLevelList, 800f, 42f);
+            AddButton(customManagePopup, "닫기", HideAllPopups, 800f, 42f);
+            SetManageButtonsInteractable(false);
+        }
+
+        private void BuildCustomEditPopup()
+        {
+            customEditPopup = CreateModal("CustomEditPopup", 780f, 650f, "게시물 수정");
+            editTitleInput = AddInputRow(customEditPopup, "게시물 이름", "", value => RefreshEditSaveButton());
+            editTitleInput.characterLimit = SupabaseConfig.PostTitleCharacterLimit;
+            editDescriptionInput = AddInputRow(customEditPopup, "게시물 설명", "", value => RefreshEditSaveButton());
+            editDescriptionInput.lineType = TMP_InputField.LineType.MultiLineNewline;
+            editDescriptionInput.characterLimit = SupabaseConfig.PostDescriptionCharacterLimit;
+            editDescriptionInput.GetComponent<LayoutElement>().preferredHeight = 110f;
+            editDescriptionInput.textComponent.enableWordWrapping = true;
+            editDescriptionInput.textComponent.overflowMode = TextOverflowModes.Overflow;
+            editMapPathInput = AddInputRow(customEditPopup, "교체 맵", "선택 안 함", value => { });
+            editMapPathInput.interactable = false;
+            AddButton(customEditPopup, "맵 파일 선택", PickEditMapFile, 680f, 46f);
+            editValidationText = AddText(customEditPopup, "게시물 이름과 설명을 입력하세요. 맵을 교체하지 않으면 기존 맵을 유지합니다.", 17, TextAlignmentOptions.Left, new Color(0.85f, 0.9f, 1f, 1f), true);
+            editValidationText.GetComponent<LayoutElement>().preferredHeight = 70f;
+            editSaveButton = AddButton(customEditPopup, "수정 저장", UpdateSelectedManagedPost, 680f, 52f);
+            AddButton(customEditPopup, "취소", ShowCustomManagePopup, 680f, 42f);
+            RefreshEditSaveButton();
         }
 
         private void BuildSettingsPopup()
@@ -342,14 +396,17 @@ namespace UI.Title
             {
                 CustomLevelPostData post = downloadedPosts[i];
                 RectTransform card = CreatePanel("OnlineLevelCard", customDownloadContent, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.08f, 0.095f, 0.13f, 1f));
-                card.gameObject.AddComponent<LayoutElement>().preferredHeight = 132f;
-                AddVertical(card, 10, 10, 8, 8, 3).childForceExpandHeight = false;
+                card.gameObject.AddComponent<LayoutElement>().preferredHeight = 178f;
+                AddVertical(card, 10, 10, 8, 8, 4).childForceExpandHeight = false;
                 AddText(card, post.DisplayTitle, 24, TextAlignmentOptions.Left, Color.white, false);
                 AddText(card, "닉네임: " + post.DisplayNickname, 17, TextAlignmentOptions.Left, new Color(0.7f, 0.9f, 1f, 1f), false);
                 TMP_Text desc = AddText(card, post.DisplayDescription, 16, TextAlignmentOptions.Left, new Color(0.84f, 0.87f, 0.94f, 1f), true);
-                desc.GetComponent<LayoutElement>().preferredHeight = 44f;
-                Button selectButton = card.gameObject.AddComponent<Button>();
-                selectButton.onClick.AddListener(() => SelectOnlinePost(post));
+                desc.GetComponent<LayoutElement>().preferredHeight = 48f;
+                RectTransform bottom = CreateUIObject("OnlineCardBottom", card);
+                bottom.gameObject.AddComponent<LayoutElement>().preferredHeight = 40f;
+                AddHorizontal(bottom, 0, 0, 0, 0, 8);
+                AddButton(bottom, post.LikeText, () => ToggleLike(post), 180f, 36f);
+                AddButton(bottom, "선택", () => SelectOnlinePost(post), 140f, 36f);
             }
         }
 
@@ -377,6 +434,222 @@ namespace UI.Title
             ShowTitleNotice("다운로드 완료!", false);
             selectedCustomLevelPath = path;
             RefreshCustomLevelPopupList();
+        }
+
+        private void ToggleLike(CustomLevelPostData post)
+        {
+            if (post == null)
+                return;
+
+            ShowTitleNotice(post.liked_by_me ? "좋아요 취소 중..." : "좋아요 처리 중...", false);
+            StartCoroutine(SupabaseCustomLevelService.Instance.ToggleLike(post, (success, message, updatedPost) =>
+            {
+                ShowTitleNotice(message, !success);
+                if (success)
+                    RebuildOnlineLevelList();
+            }));
+        }
+
+        private void ShowCustomManagePopup()
+        {
+            HideAllPopups(false);
+            if (customManagePopup != null)
+                customManagePopup.gameObject.SetActive(true);
+            PlayUiOpen();
+            RefreshManagedLevelList();
+        }
+
+        private void RefreshManagedLevelList()
+        {
+            selectedManagedPost = null;
+            SetManageButtonsInteractable(false);
+
+            if (customManageContent != null)
+            {
+                ClearChildren(customManageContent);
+                AddText(customManageContent, "내 게시물 불러오는 중...", 22, TextAlignmentOptions.Center, Color.white, true);
+            }
+
+            StartCoroutine(SupabaseCustomLevelService.Instance.FetchMyCustomLevels((success, message, posts) =>
+            {
+                if (!success)
+                {
+                    ShowTitleNotice(message, true);
+                    if (customManageContent != null)
+                    {
+                        ClearChildren(customManageContent);
+                        AddText(customManageContent, message, 20, TextAlignmentOptions.Center, new Color(1f, 0.45f, 0.45f, 1f), true);
+                    }
+                    return;
+                }
+
+                managedPosts.Clear();
+                if (posts != null)
+                    managedPosts.AddRange(posts);
+                RebuildManagedLevelList();
+            }));
+        }
+
+        private void RebuildManagedLevelList()
+        {
+            if (customManageContent == null)
+                return;
+
+            ClearChildren(customManageContent);
+            if (managedPosts.Count <= 0)
+            {
+                AddText(customManageContent, "이 기기에서 업로드한 게시물이 없습니다.", 22, TextAlignmentOptions.Center, Color.white, true);
+                return;
+            }
+
+            for (int i = 0; i < managedPosts.Count; i++)
+            {
+                CustomLevelPostData post = managedPosts[i];
+                RectTransform card = CreatePanel("ManagedLevelCard", customManageContent, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.08f, 0.095f, 0.13f, 1f));
+                card.gameObject.AddComponent<LayoutElement>().preferredHeight = 156f;
+                AddVertical(card, 10, 10, 8, 8, 4).childForceExpandHeight = false;
+                AddText(card, post.DisplayTitle, 23, TextAlignmentOptions.Left, Color.white, false);
+                AddText(card, "닉네임: " + post.DisplayNickname + "    " + post.LikeText, 16, TextAlignmentOptions.Left, new Color(0.7f, 0.9f, 1f, 1f), false);
+                TMP_Text desc = AddText(card, post.DisplayDescription, 16, TextAlignmentOptions.Left, new Color(0.84f, 0.87f, 0.94f, 1f), true);
+                desc.GetComponent<LayoutElement>().preferredHeight = 48f;
+                AddButton(card, "선택", () => SelectManagedPost(post), 760f, 32f);
+            }
+        }
+
+        private void SelectManagedPost(CustomLevelPostData post)
+        {
+            selectedManagedPost = post;
+            SetManageButtonsInteractable(post != null);
+            ShowTitleNotice("관리 선택됨: " + (post != null ? post.DisplayTitle : "없음"), false);
+        }
+
+        private void SetManageButtonsInteractable(bool interactable)
+        {
+            if (managePlayButton != null) managePlayButton.interactable = interactable;
+            if (manageDeleteButton != null) manageDeleteButton.interactable = interactable;
+            if (manageEditButton != null) manageEditButton.interactable = interactable;
+        }
+
+        private void PlaySelectedManagedPost()
+        {
+            if (selectedManagedPost == null)
+                return;
+
+            bool success = SupabaseCustomLevelService.Instance.SaveDownloadedLevel(selectedManagedPost, out string path, out string error);
+            if (!success)
+            {
+                ShowTitleNotice(error, true);
+                return;
+            }
+
+            selectedCustomLevelPath = path;
+            PlaySelectedCustomLevel();
+        }
+
+        private void DeleteSelectedManagedPost()
+        {
+            if (selectedManagedPost == null)
+                return;
+
+            ShowTitleNotice("삭제 중...", false);
+            StartCoroutine(SupabaseCustomLevelService.Instance.DeleteCustomLevelPost(selectedManagedPost, (success, message) =>
+            {
+                ShowTitleNotice(message, !success);
+                if (success)
+                    RefreshManagedLevelList();
+            }));
+        }
+
+        private void ShowEditManagedPostPopup()
+        {
+            if (selectedManagedPost == null)
+                return;
+
+            HideAllPopups(false);
+            if (customEditPopup != null)
+                customEditPopup.gameObject.SetActive(true);
+
+            editSelectedMapPath = string.Empty;
+            editSelectedStageData = null;
+            if (editTitleInput != null) editTitleInput.SetTextWithoutNotify(selectedManagedPost.DisplayTitle);
+            if (editDescriptionInput != null) editDescriptionInput.SetTextWithoutNotify(selectedManagedPost.DisplayDescription);
+            if (editMapPathInput != null) editMapPathInput.SetTextWithoutNotify("선택 안 함");
+            RefreshEditSaveButton();
+            PlayUiOpen();
+        }
+
+        private void PickEditMapFile()
+        {
+            string path = NativeFileDialogUtility.OpenTlsFilePanel("교체할 .tls 선택", StageFilePaths.MyCustomLevelsDirectory);
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            editSelectedMapPath = path;
+            editSelectedStageData = null;
+
+            if (!StageBinarySerializer.TryLoad(path, out StageData data))
+            {
+                if (editMapPathInput != null) editMapPathInput.SetTextWithoutNotify(Path.GetFileName(path) + " / 불러오기 실패");
+                ShowTitleNotice("맵 파일을 불러올 수 없습니다.", true);
+                RefreshEditSaveButton();
+                return;
+            }
+
+            if (!data.HasSolution)
+            {
+                if (editMapPathInput != null) editMapPathInput.SetTextWithoutNotify(Path.GetFileName(path) + " / 답안 없음");
+                ShowTitleNotice("답안이 없는 맵은 교체 업로드할 수 없습니다.", true);
+                RefreshEditSaveButton();
+                return;
+            }
+
+            editSelectedStageData = data;
+            if (editMapPathInput != null) editMapPathInput.SetTextWithoutNotify(path);
+            ShowTitleNotice("교체 맵 선택 완료", false);
+            RefreshEditSaveButton();
+        }
+
+        private void RefreshEditSaveButton()
+        {
+            bool hasText = selectedManagedPost != null && editTitleInput != null && editDescriptionInput != null &&
+                !string.IsNullOrWhiteSpace(editTitleInput.text) && !string.IsNullOrWhiteSpace(editDescriptionInput.text);
+            bool mapValid = string.IsNullOrWhiteSpace(editSelectedMapPath) || editSelectedStageData != null;
+            if (editSaveButton != null)
+                editSaveButton.interactable = hasText && mapValid;
+
+            if (editValidationText != null)
+            {
+                if (!hasText)
+                    editValidationText.text = "게시물 이름과 설명을 입력하세요.";
+                else if (!mapValid)
+                    editValidationText.text = "교체하려는 맵에 답안이 없습니다. 다른 .tls를 선택하세요.";
+                else if (string.IsNullOrWhiteSpace(editSelectedMapPath))
+                    editValidationText.text = "수정 준비 완료 / 맵은 기존 파일 유지";
+                else
+                    editValidationText.text = "수정 준비 완료 / 맵 교체 포함";
+            }
+        }
+
+        private void UpdateSelectedManagedPost()
+        {
+            RefreshEditSaveButton();
+            if (editSaveButton == null || !editSaveButton.interactable || selectedManagedPost == null)
+                return;
+
+            ShowTitleNotice("수정 중...", false);
+            string mapPath = string.IsNullOrWhiteSpace(editSelectedMapPath) ? string.Empty : editSelectedMapPath;
+            StageData mapData = string.IsNullOrWhiteSpace(mapPath) ? null : editSelectedStageData;
+            StartCoroutine(SupabaseCustomLevelService.Instance.UpdateCustomLevelPost(selectedManagedPost, editTitleInput.text.Trim(), editDescriptionInput.text.Trim(), mapPath, mapData, (success, message) =>
+            {
+                ShowTitleNotice(message, !success);
+                if (success)
+                {
+                    HideAllPopups(false);
+                    if (customManagePopup != null)
+                        customManagePopup.gameObject.SetActive(true);
+                    RefreshManagedLevelList();
+                }
+            }));
         }
 
         private void PlaySelectedCustomLevel()
@@ -457,6 +730,18 @@ namespace UI.Title
             if (customDownloadPopup != null && customDownloadPopup.gameObject.activeSelf)
             {
                 customDownloadPopup.gameObject.SetActive(false);
+                closedAny = true;
+            }
+
+            if (customManagePopup != null && customManagePopup.gameObject.activeSelf)
+            {
+                customManagePopup.gameObject.SetActive(false);
+                closedAny = true;
+            }
+
+            if (customEditPopup != null && customEditPopup.gameObject.activeSelf)
+            {
+                customEditPopup.gameObject.SetActive(false);
                 closedAny = true;
             }
 
@@ -605,6 +890,16 @@ namespace UI.Title
             return layout;
         }
 
+        private HorizontalLayoutGroup AddHorizontal(RectTransform parent, int left, int right, int top, int bottom, int spacing)
+        {
+            HorizontalLayoutGroup layout = parent.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.padding = new RectOffset(left, right, top, bottom);
+            layout.spacing = spacing;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            return layout;
+        }
+
         private TMP_Text AddText(RectTransform parent, string text, int size, TextAlignmentOptions alignment, Color color, bool wrap)
         {
             RectTransform rect = CreateUIObject("Text", parent);
@@ -638,6 +933,36 @@ namespace UI.Title
             rect.GetChild(0).GetComponent<RectTransform>().offsetMin = Vector2.zero;
             rect.GetChild(0).GetComponent<RectTransform>().offsetMax = Vector2.zero;
             return button;
+        }
+
+        private TMP_InputField AddInputRow(RectTransform parent, string label, string value, Action<string> onEndEdit)
+        {
+            RectTransform row = CreateUIObject(label + "Row", parent);
+            AddHorizontal(row, 0, 0, 0, 0, 8);
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 42f;
+            TMP_Text labelText = AddText(row, label, 17, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 1f, 1f), false);
+            labelText.GetComponent<LayoutElement>().preferredWidth = 150f;
+            TMP_InputField input = CreateInputField(row, value);
+            input.onValueChanged.AddListener(text => onEndEdit?.Invoke(text));
+            input.onEndEdit.AddListener(text => onEndEdit?.Invoke(text));
+            return input;
+        }
+
+        private TMP_InputField CreateInputField(RectTransform parent, string value)
+        {
+            RectTransform rect = CreatePanel("InputField", parent, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.06f, 0.07f, 0.095f, 1f));
+            LayoutElement layout = rect.gameObject.AddComponent<LayoutElement>();
+            layout.preferredHeight = 38f;
+            layout.flexibleWidth = 1f;
+            TMP_InputField input = rect.gameObject.AddComponent<TMP_InputField>();
+            TMP_Text text = AddText(rect, value, 17, TextAlignmentOptions.Left, Color.white, false);
+            text.rectTransform.anchorMin = Vector2.zero;
+            text.rectTransform.anchorMax = Vector2.one;
+            text.rectTransform.offsetMin = new Vector2(8f, 0f);
+            text.rectTransform.offsetMax = new Vector2(-8f, 0f);
+            input.textComponent = text;
+            input.text = value;
+            return input;
         }
 
         private Slider CreateSlider(RectTransform parent, float value)
