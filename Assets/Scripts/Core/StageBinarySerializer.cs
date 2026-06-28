@@ -8,7 +8,7 @@ namespace Core
     public static class StageBinarySerializer
     {
         private const string Magic = "TLS_STAGE";
-        private const int Version = 5;
+        private const int Version = 6;
 
         public static void Save(StageData stageData, string path)
         {
@@ -50,16 +50,31 @@ namespace Core
             WriteDistanceSensorList(writer, stageData.distanceSensors);
             WriteTransformZoneList(writer, stageData.transformZones);
             WriteObjectList(writer, stageData.objects);
+            WriteSolutionActionList(writer, stageData.solutionActions);
         }
 
         public static StageData Load(string path)
         {
             using FileStream fileStream = new FileStream(path, FileMode.Open, FileAccess.Read);
             using BinaryReader reader = new BinaryReader(fileStream);
+            return Read(reader, path);
+        }
 
+        public static StageData Load(byte[] bytes, string sourceName = "Memory")
+        {
+            if (bytes == null)
+                throw new ArgumentNullException(nameof(bytes));
+
+            using MemoryStream memoryStream = new MemoryStream(bytes);
+            using BinaryReader reader = new BinaryReader(memoryStream);
+            return Read(reader, sourceName);
+        }
+
+        private static StageData Read(BinaryReader reader, string sourceName)
+        {
             string magic = reader.ReadString();
             if (magic != Magic)
-                throw new InvalidDataException($"The file is not a The Laser stage file: {path}");
+                throw new InvalidDataException($"The file is not a The Laser stage file: {sourceName}");
 
             int version = reader.ReadInt32();
             if (version < 1 || version > Version)
@@ -108,6 +123,7 @@ namespace Core
             stageData.distanceSensors = ReadDistanceSensorList(reader, version);
             stageData.transformZones = ReadTransformZoneList(reader, version);
             stageData.objects = ReadObjectList(reader);
+            stageData.solutionActions = version >= 6 ? ReadSolutionActionList(reader) : new List<StageSolutionActionData>();
 
             return stageData;
         }
@@ -117,6 +133,21 @@ namespace Core
             try
             {
                 stageData = Load(path);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[StageBinarySerializer] Load failed: {exception.Message}");
+                stageData = null;
+                return false;
+            }
+        }
+
+        public static bool TryLoad(byte[] bytes, out StageData stageData, string sourceName = "Memory")
+        {
+            try
+            {
+                stageData = Load(bytes, sourceName);
                 return true;
             }
             catch (Exception exception)
@@ -529,5 +560,47 @@ namespace Core
             data.transformZoneId = reader.ReadString();
             return data;
         }
+
+        private static void WriteSolutionActionList(BinaryWriter writer, List<StageSolutionActionData> list)
+        {
+            writer.Write(list?.Count ?? 0);
+            if (list == null)
+                return;
+
+            for (int i = 0; i < list.Count; i++)
+                WriteSolutionAction(writer, list[i]);
+        }
+
+        private static List<StageSolutionActionData> ReadSolutionActionList(BinaryReader reader)
+        {
+            int count = reader.ReadInt32();
+            List<StageSolutionActionData> list = new List<StageSolutionActionData>(count);
+            for (int i = 0; i < count; i++)
+                list.Add(ReadSolutionAction(reader));
+            return list;
+        }
+
+        private static void WriteSolutionAction(BinaryWriter writer, StageSolutionActionData data)
+        {
+            writer.Write(data != null);
+            if (data == null)
+                return;
+
+            writer.Write((int)data.actionType);
+            writer.Write((int)data.direction);
+        }
+
+        private static StageSolutionActionData ReadSolutionAction(BinaryReader reader)
+        {
+            if (!reader.ReadBoolean())
+                return null;
+
+            return new StageSolutionActionData
+            {
+                actionType = (StageSolutionActionType)reader.ReadInt32(),
+                direction = (GridDirection)reader.ReadInt32()
+            };
+        }
+
     }
 }

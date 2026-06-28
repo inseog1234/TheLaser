@@ -16,6 +16,8 @@ namespace UI.Title
         private sealed class StageEntry
         {
             public string Path;
+            public string ResourceKey;
+            public bool IsBuiltInResource;
             public StageData Data;
         }
 
@@ -113,7 +115,7 @@ namespace UI.Title
             List<int> keys = new List<int>(byChapter.Keys);
             keys.Sort();
             if (keys.Count <= 0)
-                AddText(content, "BuiltInLevels 폴더에 .tls가 없음", 24, TextAlignmentOptions.Center, Color.white, true);
+                AddText(content, "내장 스테이지가 없음\nAssets/Resources/BuiltInLevels에 .bytes가 필요함", 24, TextAlignmentOptions.Center, Color.white, true);
 
             for (int i = 0; i < keys.Count; i++)
                 AddChapterBlock(content, keys[i], byChapter[keys[i]]);
@@ -208,15 +210,33 @@ namespace UI.Title
         private List<StageEntry> LoadBuiltInStageEntries()
         {
             List<StageEntry> result = new();
-            if (!Directory.Exists(StageFilePaths.BuiltInLevelsDirectory))
-                return result;
-
-            string[] files = Directory.GetFiles(StageFilePaths.BuiltInLevelsDirectory, "*.tls", SearchOption.TopDirectoryOnly);
-            for (int i = 0; i < files.Length; i++)
+            List<BuiltInStageEntry> resourceEntries = BuiltInStageLoader.LoadEntries(true);
+            for (int i = 0; i < resourceEntries.Count; i++)
             {
-                if (StageBinarySerializer.TryLoad(files[i], out StageData data))
-                    result.Add(new StageEntry { Path = files[i], Data = data });
+                BuiltInStageEntry resourceEntry = resourceEntries[i];
+                if (resourceEntry == null || resourceEntry.Data == null)
+                    continue;
+
+                result.Add(new StageEntry
+                {
+                    Path = StageFilePaths.ToBuiltInResourcePath(resourceEntry.ResourceKey),
+                    ResourceKey = resourceEntry.ResourceKey,
+                    IsBuiltInResource = true,
+                    Data = resourceEntry.Data
+                });
             }
+
+#if UNITY_EDITOR
+            if (result.Count <= 0 && Directory.Exists(StageFilePaths.BuiltInLevelsDirectory))
+            {
+                string[] files = Directory.GetFiles(StageFilePaths.BuiltInLevelsDirectory, "*.tls", SearchOption.TopDirectoryOnly);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    if (StageBinarySerializer.TryLoad(files[i], out StageData data))
+                        result.Add(new StageEntry { Path = files[i], IsBuiltInResource = false, Data = data });
+                }
+            }
+#endif
             return result;
         }
 

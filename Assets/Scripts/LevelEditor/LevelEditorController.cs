@@ -102,12 +102,14 @@ namespace LevelEditor
         private RectTransform newLevelPopup;
         private RectTransform loadPopup;
         private RectTransform savePopup;
+        private RectTransform solutionOverwritePopup;
         private RectTransform helpPanel;
         private TMP_Text descriptionTitleText;
         private TMP_Text descriptionBodyText;
         private TMP_Text statusText;
         private TMP_Text gridInfoText;
         private TMP_Text currentFileText;
+        private TMP_Text solutionOverwriteInfoText;
         private TMP_InputField runtimeStageNameInput;
         private TMP_InputField runtimeWidthInput;
         private TMP_InputField runtimeHeightInput;
@@ -156,6 +158,7 @@ namespace LevelEditor
         private string selectedLoadFilePath;
         private string selectedSaveDirectory;
         private string selectedSaveFileName = "CustomLevel";
+        private List<StageSolutionActionData> pendingReturnedSolutionActions;
         private FmodRuntimeAudio audioController;
         private int editorBgmIndex = 10;
         private bool suppressRuntimeSettingEvent;
@@ -287,7 +290,81 @@ namespace LevelEditor
             ResetStageHistory();
             HideAllPopups(false);
             SetStatus("테스트 종료: 작업 중인 맵을 복구함");
+            HandleReturnedSolutionAfterTest();
             return true;
+        }
+
+        private void HandleReturnedSolutionAfterTest()
+        {
+            if (!GameSceneRequest.TryConsumePendingEditorSolution(out List<StageSolutionActionData> actions) || actions == null || actions.Count <= 0)
+                return;
+
+            pendingReturnedSolutionActions = CloneSolutionActions(actions);
+
+            if (editingStageData != null && editingStageData.HasSolution)
+            {
+                ShowSolutionOverwritePopup();
+                return;
+            }
+
+            ApplyPendingReturnedSolution();
+        }
+
+        private void ShowSolutionOverwritePopup()
+        {
+            HideAllPopups(false);
+            if (solutionOverwriteInfoText != null)
+            {
+                int oldCount = editingStageData != null && editingStageData.solutionActions != null ? editingStageData.solutionActions.Count : 0;
+                int newCount = pendingReturnedSolutionActions != null ? pendingReturnedSolutionActions.Count : 0;
+                solutionOverwriteInfoText.text = $"기존 답안을 덮어쓸까요?\n기존 답안: {oldCount} 행동 / 새 답안: {newCount} 행동";
+            }
+
+            if (solutionOverwritePopup != null)
+                solutionOverwritePopup.gameObject.SetActive(true);
+
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
+        }
+
+        private void ConfirmOverwriteSolution()
+        {
+            ApplyPendingReturnedSolution();
+            HideAllPopups();
+        }
+
+        private void KeepExistingSolution()
+        {
+            pendingReturnedSolutionActions = null;
+            HideAllPopups();
+            SetStatus("이전 답안을 유지함");
+        }
+
+        private void ApplyPendingReturnedSolution()
+        {
+            if (editingStageData == null || pendingReturnedSolutionActions == null || pendingReturnedSolutionActions.Count <= 0)
+                return;
+
+            undoStack.Add(editingStageData.Clone());
+            editingStageData.solutionActions = CloneSolutionActions(pendingReturnedSolutionActions);
+            pendingReturnedSolutionActions = null;
+            RefreshRuntimeSettingsPanel();
+            ResetStageHistory();
+            SetStatus($"답안 기록 완료: {editingStageData.solutionActions.Count} 행동");
+        }
+
+        private static List<StageSolutionActionData> CloneSolutionActions(List<StageSolutionActionData> source)
+        {
+            List<StageSolutionActionData> result = new List<StageSolutionActionData>();
+            if (source == null)
+                return result;
+
+            for (int i = 0; i < source.Count; i++)
+            {
+                if (source[i] != null)
+                    result.Add(source[i].Clone());
+            }
+
+            return result;
         }
 
         public void LoadLevelFromInputPath()
@@ -572,6 +649,7 @@ namespace LevelEditor
             BuildNewLevelPopup();
             BuildLoadPopup();
             BuildSavePopup();
+            BuildSolutionOverwritePopup();
             RebuildPalette();
             HideAllPopups();
         }
@@ -722,6 +800,16 @@ namespace LevelEditor
             AddButton(savePopup, "취소", () => HideAllPopups(), 600f, 42f);
             currentFileText = AddText(savePopup, "", 16, TextAlignmentOptions.Left, new Color(0.75f, 0.8f, 0.9f, 1f));
             currentFileText.enableWordWrapping = false;
+        }
+
+        private void BuildSolutionOverwritePopup()
+        {
+            solutionOverwritePopup = CreateModalPanel("SolutionOverwritePopup", 640f, 330f, "기존 답안 덮어쓰기");
+            solutionOverwriteInfoText = AddText(solutionOverwritePopup, "기존 답안을 덮어쓸까요?", 22, TextAlignmentOptions.Center, new Color(0.9f, 0.94f, 1f, 1f));
+            solutionOverwriteInfoText.enableWordWrapping = true;
+            solutionOverwriteInfoText.GetComponent<LayoutElement>().preferredHeight = 90f;
+            AddButton(solutionOverwritePopup, "네", ConfirmOverwriteSolution, 560f, 52f);
+            AddButton(solutionOverwritePopup, "아니오", KeepExistingSolution, 560f, 46f);
         }
 
         private RectTransform CreateModalPanel(string name, float width, float height, string title)
@@ -1221,7 +1309,11 @@ namespace LevelEditor
             suppressRuntimeSettingEvent = false;
 
             if (gridInfoText != null)
-                gridInfoText.text = $"스테이지: {(string.IsNullOrWhiteSpace(editingStageData.stageName) ? "Custom Level" : editingStageData.stageName)}\n맵: {editingStageData.width} x {editingStageData.height} / 레이저 {(editingStageData.laserMaxDistance <= 0 ? "무제한" : editingStageData.laserMaxDistance + "칸")} / 이동 {(editingStageData.moveLimit <= 0 ? "무제한" : editingStageData.moveLimit + "회")} / BGM {BgmDisplayNames()[FindBgmIndex(editingStageData.bgmEventPath)]}";
+            {
+                int solutionCount = editingStageData.solutionActions != null ? editingStageData.solutionActions.Count : 0;
+                string solutionText = solutionCount > 0 ? $"답안 {solutionCount} 행동" : "답안 없음";
+                gridInfoText.text = $"스테이지: {(string.IsNullOrWhiteSpace(editingStageData.stageName) ? "Custom Level" : editingStageData.stageName)}\n맵: {editingStageData.width} x {editingStageData.height} / 레이저 {(editingStageData.laserMaxDistance <= 0 ? "무제한" : editingStageData.laserMaxDistance + "칸")} / 이동 {(editingStageData.moveLimit <= 0 ? "무제한" : editingStageData.moveLimit + "회")} / BGM {BgmDisplayNames()[FindBgmIndex(editingStageData.bgmEventPath)]} / {solutionText}";
+            }
 
             if (currentFileText != null)
                 currentFileText.text = string.IsNullOrWhiteSpace(currentFilePath) ? "현재 파일 없음" : currentFilePath;
@@ -3128,7 +3220,8 @@ namespace LevelEditor
             return (mainPopup != null && mainPopup.gameObject.activeSelf) ||
                 (newLevelPopup != null && newLevelPopup.gameObject.activeSelf) ||
                 (loadPopup != null && loadPopup.gameObject.activeSelf) ||
-                (savePopup != null && savePopup.gameObject.activeSelf);
+                (savePopup != null && savePopup.gameObject.activeSelf) ||
+                (solutionOverwritePopup != null && solutionOverwritePopup.gameObject.activeSelf);
         }
 
         private void HideAllPopups(bool playSound = false)
@@ -3138,6 +3231,7 @@ namespace LevelEditor
             if (newLevelPopup != null) newLevelPopup.gameObject.SetActive(false);
             if (loadPopup != null) loadPopup.gameObject.SetActive(false);
             if (savePopup != null) savePopup.gameObject.SetActive(false);
+            if (solutionOverwritePopup != null) solutionOverwritePopup.gameObject.SetActive(false);
 
             if (playSound && hadOpenPopup)
                 PlayEditorSfx(FmodRuntimeAudio.SfxUiClose);

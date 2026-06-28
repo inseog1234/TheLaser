@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 using Core;
@@ -30,6 +31,8 @@ namespace Player
         public GridDirection FacingDirection => facingDirection;
         public bool IsMoving => isMoving;
         public bool ControlsEnabled => controlsEnabled;
+
+        public event Action<StageSolutionActionData> SolutionActionPerformed;
 
         private void Start()
         {
@@ -109,6 +112,7 @@ namespace Player
             {
                 SetGridPosition(targetPosition);
                 turnHistoryController?.CommitTurn();
+                NotifySolutionMove(direction);
                 return true;
             }
 
@@ -119,11 +123,13 @@ namespace Player
                 if (pushed)
                 {
                     turnHistoryController?.CommitTurn();
+                    NotifySolutionMove(direction);
                     return true;
                 }
             }
 
             turnHistoryController?.CommitTurn();
+            NotifySolutionMove(direction);
             return false;
         }
 
@@ -232,9 +238,38 @@ namespace Player
             bool rotated = objectInteractor.TryRotateObject(gridPosition, facingDirection, clockwise);
 
             if (rotated)
+            {
                 turnHistoryController?.CommitTurn();
+                NotifySolutionRotate(clockwise);
+            }
             else
+            {
                 turnHistoryController?.CancelTurn();
+            }
+        }
+
+        private void NotifySolutionMove(GridDirection direction)
+        {
+            if (turnHistoryController != null && turnHistoryController.IsApplyingHistory)
+                return;
+
+            SolutionActionPerformed?.Invoke(new StageSolutionActionData
+            {
+                actionType = StageSolutionActionType.Move,
+                direction = direction
+            });
+        }
+
+        private void NotifySolutionRotate(bool clockwise)
+        {
+            if (turnHistoryController != null && turnHistoryController.IsApplyingHistory)
+                return;
+
+            SolutionActionPerformed?.Invoke(new StageSolutionActionData
+            {
+                actionType = clockwise ? StageSolutionActionType.RotateClockwise : StageSolutionActionType.RotateCounterClockwise,
+                direction = facingDirection
+            });
         }
 
         public void SetControlsEnabled(bool enabled)

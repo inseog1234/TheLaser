@@ -54,6 +54,11 @@ namespace Core
         [Header("Puzzle Objects")]
         public List<StageObjectData> objects = new();
 
+        [Header("Solution Recording")]
+        public List<StageSolutionActionData> solutionActions = new();
+
+        public bool HasSolution => solutionActions != null && solutionActions.Count > 0;
+
         public bool IsInside(Vector2Int position)
         {
             return position.x >= 0 && position.y >= 0 && position.x < width && position.y < height;
@@ -138,7 +143,18 @@ namespace Core
             for (int i = 0; i < objects.Count; i++)
                 clone.objects.Add(CloneObject(objects[i]));
 
+            if (solutionActions != null)
+            {
+                for (int i = 0; i < solutionActions.Count; i++)
+                    clone.solutionActions.Add(CloneSolutionAction(solutionActions[i]));
+            }
+
             return clone;
+        }
+
+        private static StageSolutionActionData CloneSolutionAction(StageSolutionActionData source)
+        {
+            return source != null ? source.Clone() : null;
         }
 
         private static StageObjectData CloneObject(StageObjectData source)

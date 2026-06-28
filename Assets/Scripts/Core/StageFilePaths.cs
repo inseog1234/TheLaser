@@ -8,6 +8,8 @@ namespace Core
         public const string StageExtension = ".tls";
         public const string BuiltInLevelsDirectoryName = "BuiltInLevels";
         public const string MyCustomLevelsDirectoryName = "MyCostomLevels";
+        public const string BuiltInLevelsResourcePath = "BuiltInLevels";
+        public const string BuiltInResourcePrefix = "builtin:";
 
         public static string ExeRootDirectory
         {
@@ -26,7 +28,9 @@ namespace Core
 
         public static void EnsureDefaultDirectories()
         {
+#if UNITY_EDITOR
             Directory.CreateDirectory(BuiltInLevelsDirectory);
+#endif
             Directory.CreateDirectory(MyCustomLevelsDirectory);
         }
 
@@ -36,6 +40,42 @@ namespace Core
                 return "Stage" + StageExtension;
 
             return Path.GetExtension(fileName) == StageExtension ? fileName : fileName + StageExtension;
+        }
+
+        public static bool IsBuiltInResourcePath(string path)
+        {
+            return !string.IsNullOrWhiteSpace(path) && path.StartsWith(BuiltInResourcePrefix, System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static string ToBuiltInResourcePath(string resourceKey)
+        {
+            if (string.IsNullOrWhiteSpace(resourceKey))
+                return string.Empty;
+
+            if (IsBuiltInResourcePath(resourceKey))
+                return resourceKey;
+
+            return BuiltInResourcePrefix + resourceKey;
+        }
+
+        public static string ExtractBuiltInResourceKey(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            if (IsBuiltInResourcePath(path))
+                return path.Substring(BuiltInResourcePrefix.Length);
+
+            return path;
+        }
+
+        public static string GetBuiltInResourceLoadPath(string resourceKey)
+        {
+            string key = ExtractBuiltInResourceKey(resourceKey);
+            if (string.IsNullOrWhiteSpace(key))
+                return BuiltInLevelsResourcePath;
+
+            return BuiltInLevelsResourcePath + "/" + Path.GetFileNameWithoutExtension(key);
         }
     }
 }

@@ -57,6 +57,8 @@ namespace UI.InGame
         private TMP_Text holeInteractText;
         private RectTransform holeVisual;
         private StageData currentStage;
+        private readonly List<StageSolutionActionData> editorRecordedSolutionActions = new();
+        private bool isRecordingEditorSolution;
         private bool stageSolved;
         private bool pauseOpen;
         private bool tutorialOpen;
@@ -107,6 +109,12 @@ namespace UI.InGame
                 inputReader.PausePressed += HandlePausePressed;
             }
 
+            if (playerController != null)
+                playerController.SolutionActionPerformed += HandleSolutionActionPerformed;
+
+            editorRecordedSolutionActions.Clear();
+            isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay;
+
             if (audioController != null && currentStage != null)
                 audioController.PlayBgm(currentStage.bgmEventPath);
 
@@ -130,6 +138,9 @@ namespace UI.InGame
 
             if (turnHistoryController != null)
                 turnHistoryController.TurnCountChanged -= UpdateMoveLimitText;
+
+            if (playerController != null)
+                playerController.SolutionActionPerformed -= HandleSolutionActionPerformed;
         }
 
         private void Update()
@@ -180,9 +191,26 @@ namespace UI.InGame
             if (string.IsNullOrWhiteSpace(GameSceneRequest.StageFilePath))
                 return;
 
-            gridManager.LoadStageFromFile(GameSceneRequest.StageFilePath);
+            if (StageFilePaths.IsBuiltInResourcePath(GameSceneRequest.StageFilePath))
+            {
+                if (BuiltInStageLoader.TryLoad(GameSceneRequest.StageFilePath, out StageData builtInStageData))
+                    gridManager.LoadStage(builtInStageData);
+            }
+            else
+            {
+                gridManager.LoadStageFromFile(GameSceneRequest.StageFilePath);
+            }
+
             if (playerController != null)
                 playerController.ResetToStageStartImmediate();
+        }
+
+        private void HandleSolutionActionPerformed(StageSolutionActionData action)
+        {
+            if (!isRecordingEditorSolution || stageSolved || action == null)
+                return;
+
+            editorRecordedSolutionActions.Add(action.Clone());
         }
 
         private void EnsureEventSystem()
@@ -378,6 +406,7 @@ namespace UI.InGame
 
             stageSolved = true;
             clearHoleActivated = false;
+            isRecordingEditorSolution = false;
 
             if (turnHistoryController != null)
                 turnHistoryController.SetTurnCountingEnabled(false);
@@ -527,7 +556,9 @@ namespace UI.InGame
                 audioController.PlaySfx(FmodRuntimeAudio.SfxStageClear);
 
             yield return SceneFadeController.Instance.Fade(1f, 0.35f);
-            if (!GameSceneRequest.IsEditorTestPlay)
+            if (GameSceneRequest.IsEditorTestPlay)
+                GameSceneRequest.SetEditorTestRecordedSolution(editorRecordedSolutionActions);
+            else
                 StageProgressManager.MarkCleared(currentStage);
             LoadNextStageOrReturnTitle();
         }
@@ -559,6 +590,9 @@ namespace UI.InGame
         {
             if (currentStage == null || GameSceneRequest.IsCustomLevel)
                 return string.Empty;
+
+            if (StageFilePaths.IsBuiltInResourcePath(GameSceneRequest.StageFilePath))
+                return BuiltInStageLoader.FindNextBuiltInResourcePath(currentStage);
 
             int nextStageIndex = currentStage.stageIndexInChapter + 1;
             List<string> searchDirectories = new List<string>();
