@@ -96,6 +96,9 @@ namespace Player
             if (isMoving)
                 return false;
 
+            if (turnHistoryController != null && turnHistoryController.IsMoveLimitReached)
+                return false;
+
             turnHistoryController?.BeginTurn();
 
             SetFacingDirection(direction);
@@ -219,6 +222,9 @@ namespace Player
                 return;
 
             if (objectInteractor == null)
+                return;
+
+            if (turnHistoryController != null && turnHistoryController.IsMoveLimitReached)
                 return;
 
             turnHistoryController?.BeginTurn();

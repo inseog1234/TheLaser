@@ -29,7 +29,12 @@ namespace UI.InGame
         [SerializeField] private PlayerInputReader inputReader;
         [SerializeField] private LaserShooter laserShooter;
         [SerializeField] private SmoothCameraFollow smoothCameraFollow;
+        [SerializeField] private StageTurnHistoryController turnHistoryController;
         [SerializeField] private FmodRuntimeAudio audioController;
+
+        [Header("InGame UI")]
+        [SerializeField] private TMP_Text moveLimitText;
+        [SerializeField] private GameObject moveLimitRoot;
 
         [Header("Stage Clear Presentation")]
         [SerializeField] private float stageClearLaserPathViewDuration = 1f;
@@ -87,6 +92,15 @@ namespace UI.InGame
             if (gridManager != null)
                 gridManager.StageSolved += HandleStageSolved;
 
+            if (turnHistoryController != null)
+            {
+                turnHistoryController.SetTurnCountingEnabled(true);
+                turnHistoryController.ClearHistory();
+                turnHistoryController.TurnCountChanged += UpdateMoveLimitText;
+            }
+
+            UpdateMoveLimitText();
+
             if (inputReader != null)
             {
                 inputReader.InteractPressed += HandleInteractPressed;
@@ -113,6 +127,9 @@ namespace UI.InGame
                 inputReader.InteractPressed -= HandleInteractPressed;
                 inputReader.PausePressed -= HandlePausePressed;
             }
+
+            if (turnHistoryController != null)
+                turnHistoryController.TurnCountChanged -= UpdateMoveLimitText;
         }
 
         private void Update()
@@ -124,6 +141,7 @@ namespace UI.InGame
                 HandleInteractPressed();
 
             UpdateHoleInteractIcon();
+            UpdateMoveLimitText();
         }
 
         private void EnsureReferences()
@@ -133,6 +151,7 @@ namespace UI.InGame
             if (inputReader == null) inputReader = FindFirstObjectByType<PlayerInputReader>();
             if (laserShooter == null) laserShooter = FindFirstObjectByType<LaserShooter>();
             if (smoothCameraFollow == null) smoothCameraFollow = FindFirstObjectByType<SmoothCameraFollow>();
+            if (turnHistoryController == null) turnHistoryController = FindFirstObjectByType<StageTurnHistoryController>();
             if (audioController == null)
             {
                 audioController = FmodRuntimeAudio.Instance;
@@ -198,6 +217,7 @@ namespace UI.InGame
             AddVertical(intro, 8, 8, 8, 8, 2);
             introText = AddText(intro, "", 28, TextAlignmentOptions.Center, Color.white, true);
             introText.enableWordWrapping = true;
+
 
             holeVisual = null;
             holeInteractText = AddText(root, "SPACE", 22, TextAlignmentOptions.Center, Color.white, false);
@@ -337,6 +357,10 @@ namespace UI.InGame
                 holeInteractText.gameObject.SetActive(false);
 
             currentStage = gridManager != null ? gridManager.CurrentStageData : currentStage;
+
+            if (turnHistoryController != null)
+                turnHistoryController.SetTurnCountingEnabled(true);
+
             RefreshIntroText();
             HideAllPopups();
 
@@ -354,6 +378,9 @@ namespace UI.InGame
 
             stageSolved = true;
             clearHoleActivated = false;
+
+            if (turnHistoryController != null)
+                turnHistoryController.SetTurnCountingEnabled(false);
 
             if (stageSolvedPresentationRoutine != null)
                 StopCoroutine(stageSolvedPresentationRoutine);
@@ -411,6 +438,30 @@ namespace UI.InGame
             RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screen, null, out Vector2 local);
             holeVisual.anchoredPosition = local;
             holeVisual.gameObject.SetActive(true);
+        }
+
+        private void UpdateMoveLimitText()
+        {
+            if (moveLimitText == null)
+                return;
+
+            GameObject displayRoot = moveLimitRoot != null ? moveLimitRoot : moveLimitText.gameObject;
+            StageData stageData = currentStage;
+            if (stageData == null && gridManager != null)
+                stageData = gridManager.CurrentStageData;
+
+            int moveLimit = stageData != null ? Mathf.Max(0, stageData.moveLimit) : 0;
+            if (moveLimit <= 0)
+            {
+                displayRoot.SetActive(false);
+                return;
+            }
+
+            int usedTurnCount = turnHistoryController != null ? turnHistoryController.TurnCount : 0;
+            int remainingTurnCount = Mathf.Max(0, moveLimit - usedTurnCount);
+            displayRoot.SetActive(true);
+            moveLimitText.text = $"남은 턴 : {remainingTurnCount}";
+            moveLimitText.color = remainingTurnCount <= 0 ? new Color(1f, 0.35f, 0.35f, 1f) : Color.white;
         }
 
         private void UpdateHoleInteractIcon()

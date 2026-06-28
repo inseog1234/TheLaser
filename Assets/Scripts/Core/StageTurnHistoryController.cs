@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Grid;
@@ -38,10 +39,19 @@ namespace Core
         private StageTurnSnapshot pendingSnapshot;
         private bool hasPendingSnapshot;
         private bool isApplyingHistory;
+        private bool turnCountingEnabled = true;
+
+        public event Action TurnCountChanged;
 
         public bool IsApplyingHistory => isApplyingHistory;
+        public bool IsTurnCountingEnabled => turnCountingEnabled;
         public bool CanUndo => undoStack.Count > 0;
         public bool CanRedo => redoStack.Count > 0;
+        public int TurnCount => undoStack.Count;
+        public int CurrentMoveLimit => gridManager != null && gridManager.CurrentStageData != null ? Mathf.Max(0, gridManager.CurrentStageData.moveLimit) : 0;
+        public int RemainingTurnCount => CurrentMoveLimit <= 0 ? 0 : Mathf.Max(0, CurrentMoveLimit - TurnCount);
+        public bool HasMoveLimit => turnCountingEnabled && CurrentMoveLimit > 0;
+        public bool IsMoveLimitReached => HasMoveLimit && RemainingTurnCount <= 0;
 
         private void OnEnable()
         {
@@ -61,8 +71,21 @@ namespace Core
             inputReader.RedoPressed -= RedoTurn;
         }
 
+        public void SetTurnCountingEnabled(bool enabled)
+        {
+            turnCountingEnabled = enabled;
+
+            if (!turnCountingEnabled)
+                CancelTurn();
+
+            TurnCountChanged?.Invoke();
+        }
+
         public void BeginTurn()
         {
+            if (!turnCountingEnabled)
+                return;
+
             if (isApplyingHistory)
                 return;
 
@@ -75,6 +98,12 @@ namespace Core
 
         public void CommitTurn()
         {
+            if (!turnCountingEnabled)
+            {
+                CancelTurn();
+                return;
+            }
+
             if (isApplyingHistory)
                 return;
 
@@ -82,16 +111,21 @@ namespace Core
                 return;
 
             StageTurnSnapshot currentSnapshot = CaptureSnapshot();
+            bool turnChanged = false;
 
             if (!AreSameSnapshot(pendingSnapshot, currentSnapshot))
             {
                 undoStack.Add(pendingSnapshot);
                 TrimUndoStack();
                 redoStack.Clear();
+                turnChanged = true;
             }
 
             pendingSnapshot = null;
             hasPendingSnapshot = false;
+
+            if (turnChanged)
+                TurnCountChanged?.Invoke();
         }
 
         public void CancelTurn()
@@ -118,6 +152,7 @@ namespace Core
             redoStack.Add(currentSnapshot);
 
             ApplySnapshot(targetSnapshot);
+            TurnCountChanged?.Invoke();
         }
 
         public void RedoTurn()
@@ -139,6 +174,7 @@ namespace Core
             TrimUndoStack();
 
             ApplySnapshot(targetSnapshot);
+            TurnCountChanged?.Invoke();
         }
 
         public void ClearHistory()
@@ -147,6 +183,7 @@ namespace Core
             redoStack.Clear();
             pendingSnapshot = null;
             hasPendingSnapshot = false;
+            TurnCountChanged?.Invoke();
         }
 
         private StageTurnSnapshot CaptureSnapshot()
@@ -286,7 +323,9 @@ namespace Core
 
         private void TrimUndoStack()
         {
-            while (undoStack.Count > maxTurnCount)
+            int finalMaxTurnCount = Mathf.Max(maxTurnCount, CurrentMoveLimit);
+
+            while (undoStack.Count > finalMaxTurnCount)
                 undoStack.RemoveAt(0);
         }
     }
