@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
 using Core;
 
 namespace Grid
@@ -34,6 +35,10 @@ namespace Grid
         public SpriteRenderer functionSymbolRenderer;
         public bool useFunctionSymbolColor;
         public bool hideFunctionSymbolWhenUnused = true;
+
+        [Header("Lens Boost Text")]
+        public TMP_Text lensBoostText;
+        public bool hideLensBoostTextWhenUnused = true;
 
         [Header("Transform")]
         public bool overrideLocalScale;
@@ -302,6 +307,12 @@ namespace Grid
             if (entry == null)
                 return;
 
+            RefreshColorPrismSymbol(entry);
+            RefreshLensBoostText(entry);
+        }
+
+        private void RefreshColorPrismSymbol(GridObjectVisualEntry entry)
+        {
             if (entry.functionSymbolRenderer == null)
                 return;
 
@@ -318,6 +329,27 @@ namespace Grid
                 return;
 
             entry.functionSymbolRenderer.color = GetLaserColor(prismColor);
+        }
+
+        private void RefreshLensBoostText(GridObjectVisualEntry entry)
+        {
+            if (entry.lensBoostText == null)
+                return;
+
+            bool shouldShowText = objectType == PuzzleObjectType.Lens &&
+                                  lensType == LensType.DistanceAmplifier;
+
+            if (entry.hideLensBoostTextWhenUnused)
+                entry.lensBoostText.gameObject.SetActive(shouldShowText);
+            else
+                entry.lensBoostText.gameObject.SetActive(true);
+
+            if (!shouldShowText)
+                return;
+
+            entry.lensBoostText.richText = false;
+            entry.lensBoostText.enableWordWrapping = false;
+            entry.lensBoostText.text = $"+{Mathf.Max(0, distanceBoost)}칸";
         }
 
         private Color GetLaserColor(LaserColorKind colorKind)
@@ -410,6 +442,9 @@ namespace Grid
 
                 if (entry.functionSymbolRenderer != null && entry.hideFunctionSymbolWhenUnused)
                     entry.functionSymbolRenderer.gameObject.SetActive(false);
+
+                if (entry.lensBoostText != null && entry.hideLensBoostTextWhenUnused)
+                    entry.lensBoostText.gameObject.SetActive(false);
 
                 if (entry.visualObject != null)
                     entry.visualObject.SetActive(false);

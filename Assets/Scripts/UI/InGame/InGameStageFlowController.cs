@@ -28,7 +28,12 @@ namespace UI.InGame
         [SerializeField] private PlayerGridController playerController;
         [SerializeField] private PlayerInputReader inputReader;
         [SerializeField] private LaserShooter laserShooter;
+        [SerializeField] private SmoothCameraFollow smoothCameraFollow;
         [SerializeField] private FmodRuntimeAudio audioController;
+
+        [Header("Stage Clear Presentation")]
+        [SerializeField] private float stageClearLaserPathViewDuration = 1f;
+        [SerializeField] private float clearHoleFocusHoldDuration = 2f;
 
         private TMP_FontAsset font;
         private Sprite whiteSprite;
@@ -46,6 +51,8 @@ namespace UI.InGame
         private bool pauseOpen;
         private bool tutorialOpen;
         private bool isJumpingIntoHole;
+        private bool clearHoleActivated;
+        private Coroutine stageSolvedPresentationRoutine;
         private int tutorialPageIndex;
         private int lastPauseInputFrame = -1;
         private int lastInteractInputFrame = -1;
@@ -120,6 +127,7 @@ namespace UI.InGame
             if (playerController == null) playerController = FindFirstObjectByType<PlayerGridController>();
             if (inputReader == null) inputReader = FindFirstObjectByType<PlayerInputReader>();
             if (laserShooter == null) laserShooter = FindFirstObjectByType<LaserShooter>();
+            if (smoothCameraFollow == null) smoothCameraFollow = FindFirstObjectByType<SmoothCameraFollow>();
             if (audioController == null)
             {
                 audioController = FmodRuntimeAudio.Instance;
@@ -301,6 +309,12 @@ namespace UI.InGame
         {
             stageSolved = false;
             isJumpingIntoHole = false;
+            clearHoleActivated = false;
+            if (stageSolvedPresentationRoutine != null)
+            {
+                StopCoroutine(stageSolvedPresentationRoutine);
+                stageSolvedPresentationRoutine = null;
+            }
             pauseOpen = false;
             tutorialOpen = false;
             tutorialPageIndex = 0;
@@ -313,6 +327,9 @@ namespace UI.InGame
             RefreshIntroText();
             HideAllPopups();
 
+            if (smoothCameraFollow != null)
+                smoothCameraFollow.CancelClearHoleFocus();
+
             if (playerController != null)
                 playerController.SetControlsEnabled(true);
         }
@@ -323,11 +340,42 @@ namespace UI.InGame
                 return;
 
             stageSolved = true;
+            clearHoleActivated = false;
+
+            if (stageSolvedPresentationRoutine != null)
+                StopCoroutine(stageSolvedPresentationRoutine);
+
+            stageSolvedPresentationRoutine = StartCoroutine(StageSolvedPresentationRoutine());
+        }
+
+        private IEnumerator StageSolvedPresentationRoutine()
+        {
+            float viewDuration = Mathf.Max(0f, stageClearLaserPathViewDuration);
+            float elapsed = 0f;
+            while (elapsed < viewDuration)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            ActivateClearHoleAndFocus();
+            stageSolvedPresentationRoutine = null;
+        }
+
+        private void ActivateClearHoleAndFocus()
+        {
+            if (clearHoleActivated || gridManager == null)
+                return;
+
             Vector2Int holePosition = currentStage != null ? currentStage.clearHolePosition : Vector2Int.zero;
-            if (gridManager != null && !gridManager.IsInside(holePosition))
+            if (!gridManager.IsInside(holePosition))
                 holePosition = new Vector2Int(gridManager.Width / 2, gridManager.Height / 2);
-            if (gridManager != null)
-                gridManager.SetClearHoleActive(true, holePosition);
+
+            clearHoleActivated = true;
+            gridManager.SetClearHoleActive(true, holePosition);
+
+            if (smoothCameraFollow != null)
+                smoothCameraFollow.PlayClearHoleFocus(gridManager.GridToWorld(holePosition), clearHoleFocusHoldDuration);
         }
 
         private void UpdateHoleWorldPosition(Vector2Int gridPosition)
@@ -344,7 +392,7 @@ namespace UI.InGame
 
         private void UpdateHoleInteractIcon()
         {
-            if (!stageSolved || gridManager == null || playerController == null || holeInteractText == null)
+            if (!stageSolved || !clearHoleActivated || gridManager == null || playerController == null || holeInteractText == null)
             {
                 if (holeInteractText != null) holeInteractText.gameObject.SetActive(false);
                 return;
@@ -369,7 +417,7 @@ namespace UI.InGame
 
             lastInteractInputFrame = Time.frameCount;
 
-            if (!stageSolved || playerController == null || gridManager == null || isJumpingIntoHole)
+            if (!stageSolved || !clearHoleActivated || playerController == null || gridManager == null || isJumpingIntoHole)
                 return;
 
             Vector2Int hole = gridManager.ClearHolePosition;

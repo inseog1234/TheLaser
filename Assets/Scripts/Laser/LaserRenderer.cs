@@ -76,6 +76,106 @@ namespace Laser
             activeTiles.Clear();
         }
 
+
+        public bool HasActiveLaser => activeTiles.Count > 0;
+
+        public bool TryGetRenderedLaserBounds(out Bounds bounds)
+        {
+            bounds = default;
+            bool hasBounds = false;
+
+            for (int i = 0; i < activeTiles.Count; i++)
+            {
+                LaserPathTile tile = activeTiles[i];
+
+                if (tile == null)
+                    continue;
+
+                Renderer[] renderers = tile.GetComponentsInChildren<Renderer>(true);
+                bool tileHasRenderer = false;
+
+                for (int j = 0; j < renderers.Length; j++)
+                {
+                    Renderer renderer = renderers[j];
+
+                    if (renderer == null || !renderer.gameObject.activeInHierarchy)
+                        continue;
+
+                    if (!hasBounds)
+                    {
+                        bounds = renderer.bounds;
+                        hasBounds = true;
+                    }
+                    else
+                    {
+                        bounds.Encapsulate(renderer.bounds);
+                    }
+
+                    tileHasRenderer = true;
+                }
+
+                if (tileHasRenderer)
+                    continue;
+
+                if (!hasBounds)
+                {
+                    bounds = new Bounds(tile.transform.position, Vector3.zero);
+                    hasBounds = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(tile.transform.position);
+                }
+            }
+
+            return hasBounds;
+        }
+
+        public bool TryGetMostOffscreenLaserPoint(Camera camera, float viewportMargin, out Vector3 laserWorldPosition)
+        {
+            laserWorldPosition = Vector3.zero;
+
+            if (camera == null || activeTiles.Count <= 0)
+                return false;
+
+            viewportMargin = Mathf.Clamp(viewportMargin, 0f, 0.45f);
+            float min = viewportMargin;
+            float max = 1f - viewportMargin;
+            float bestScore = 0f;
+            bool found = false;
+
+            for (int i = 0; i < activeTiles.Count; i++)
+            {
+                LaserPathTile tile = activeTiles[i];
+
+                if (tile == null)
+                    continue;
+
+                Vector3 position = tile.transform.position;
+                Vector3 viewportPosition = camera.WorldToViewportPoint(position);
+                float score = 0f;
+
+                if (viewportPosition.x < min)
+                    score += min - viewportPosition.x;
+                else if (viewportPosition.x > max)
+                    score += viewportPosition.x - max;
+
+                if (viewportPosition.y < min)
+                    score += min - viewportPosition.y;
+                else if (viewportPosition.y > max)
+                    score += viewportPosition.y - max;
+
+                if (score <= bestScore)
+                    continue;
+
+                bestScore = score;
+                laserWorldPosition = position;
+                found = true;
+            }
+
+            return found;
+        }
+
         private Color ResolveColor(LaserColorKind colorKind)
         {
             for (int i = 0; i < colorPalette.Count; i++)

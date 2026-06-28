@@ -182,17 +182,6 @@ namespace Grid
             sequenceValues.Sort((a, b) => a.CompareTo(b));
             targetStageData.sequenceLockPattern = sequenceValues;
 
-            int lastSequenceIndex = sequenceValues.Count > 0 ? sequenceValues[sequenceValues.Count - 1] : -1;
-
-            for (int i = 0; i < targetStageData.advancedTargets.Count; i++)
-            {
-                StageTargetData target = targetStageData.advancedTargets[i];
-                if (target == null)
-                    continue;
-
-                if (target.targetType == TargetType.SequenceLocked || target.targetType == TargetType.SequenceColorLocked)
-                    target.stopLaserOnHit = target.sequenceValue == lastSequenceIndex;
-            }
         }
 
         private void ClearRuntimeGrid()

@@ -331,6 +331,7 @@ MonoBehaviour:
   detectionRadius: 0.5
   activateTransformZone: 0
   transformZoneId: 
+  triggers: []
   isActivated: 0
 --- !u!1 &6626317566678877168
 GameObject:

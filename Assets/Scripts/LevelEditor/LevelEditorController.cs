@@ -48,6 +48,7 @@ namespace LevelEditor
             public GridDirection Direction = GridDirection.Right;
             public LaserColorKind Color = LaserColorKind.Default;
             public int SequenceIndex = 1;
+            public bool TargetPassThrough = true;
             public int IntersectionCount = 2;
             public List<LaserColorKind> IntersectionColors = new() { LaserColorKind.Default, LaserColorKind.Default, LaserColorKind.Default };
             public bool Pushable;
@@ -157,6 +158,8 @@ namespace LevelEditor
         private int editorBgmIndex = 10;
         private bool suppressRuntimeSettingEvent;
         private bool isDraggingElement;
+        private bool isNativeFileDialogOpen;
+        private float lastNativeFileDialogClosedTime = -10f;
         private bool dragUndoCaptured;
         private bool isSettingsPanelExpanded = true;
         private Vector2Int dragLastGridPosition;
@@ -936,6 +939,7 @@ namespace LevelEditor
                 case ToolType.TargetSequence:
                     AddIntStepper(settingsPanel, "시퀸스 Index", settings.SequenceIndex, 1, 999, value => settings.SequenceIndex = GetAvailableSequenceIndex(value, null));
                     AddLaserColorDropdown(settingsPanel, "색상", settings.Color, value => settings.Color = value);
+                    AddToggleRow(settingsPanel, "레이저 관통", settings.TargetPassThrough, value => settings.TargetPassThrough = value);
                     break;
 
                 case ToolType.TargetIntersection:
@@ -1018,6 +1022,7 @@ namespace LevelEditor
             {
                 AddIntStepper(settingsPanel, "시퀸스 Index", target.sequenceValue, 1, 999, value => { target.sequenceValue = GetAvailableSequenceIndex(value, target); RebuildSequencePattern(); RebuildStageVisuals(); RebuildSettingsPanel(); });
                 AddLaserColorDropdown(settingsPanel, "색상", target.requiredColor, value => { target.requiredColor = value; target.targetType = value == LaserColorKind.Default ? TargetType.SequenceLocked : TargetType.SequenceColorLocked; RebuildSequencePattern(); RebuildStageVisuals(); RebuildSettingsPanel(); });
+                AddToggleRow(settingsPanel, "레이저 관통", !target.stopLaserOnHit, value => { target.stopLaserOnHit = !value; RebuildStageVisuals(); RebuildSettingsPanel(); });
                 return;
             }
 
@@ -1662,7 +1667,7 @@ namespace LevelEditor
                         targetType = placementSettings.Color == LaserColorKind.Default ? TargetType.SequenceLocked : TargetType.SequenceColorLocked,
                         requiredColor = placementSettings.Color,
                         sequenceValue = GetAvailableSequenceIndex(placementSettings.SequenceIndex, null),
-                        stopLaserOnHit = false
+                        stopLaserOnHit = !placementSettings.TargetPassThrough
                     };
                     AddTargetData(sequenceTarget);
                     RebuildSequencePattern();
@@ -2167,9 +2172,14 @@ namespace LevelEditor
             Color visualColor = ResolveLaserColor(color, targetType == TargetType.Intersection ? new Color(1f, 0.35f, 1f, 1f) : Color.white);
             CreateSpriteObject("TargetCircle", root.transform, Vector3.zero, new Vector2(0.72f, 0.72f), visualColor, -4);
             string label = "T";
+            Color labelColor = Color.black;
             if (targetType == TargetType.SequenceLocked || targetType == TargetType.SequenceColorLocked) label = sequenceValue.ToString();
-            if (targetType == TargetType.Intersection) label = $"×{intersectionCount}";
-            AddWorldLabel(root.transform, label, Vector3.zero, 0.34f, Color.black, 15);
+            if (targetType == TargetType.Intersection)
+            {
+                label = BuildIntersectionLabel(intersectionCount, intersectionColors);
+                labelColor = Color.white;
+            }
+            AddWorldLabel(root.transform, label, Vector3.zero, 0.34f, labelColor, 15);
             stageVisuals.Add(root);
         }
 
@@ -2489,9 +2499,14 @@ namespace LevelEditor
             Color color = targetType == TargetType.Intersection ? new Color(1f, 0.35f, 1f, 0.65f) : ResolveLaserColor(settings.Color, new Color(1f, 1f, 1f, 0.65f));
             CreateSpriteObject("TargetGhost", parent, Vector3.zero, new Vector2(0.72f, 0.72f), color, 32);
             string label = "T";
+            Color labelColor = Color.black;
             if (targetType == TargetType.SequenceLocked || targetType == TargetType.SequenceColorLocked) label = settings.SequenceIndex.ToString();
-            if (targetType == TargetType.Intersection) label = $"×{settings.IntersectionCount}";
-            AddWorldLabel(parent, label, Vector3.zero, 0.34f, Color.black, 33);
+            if (targetType == TargetType.Intersection)
+            {
+                label = BuildIntersectionLabel(settings.IntersectionCount, settings.IntersectionColors);
+                labelColor = Color.white;
+            }
+            AddWorldLabel(parent, label, Vector3.zero, 0.34f, labelColor, 33);
         }
 
         private void DrawRange(Transform parent, Vector3 localOrWorld, int width, int height, Color color)
@@ -2514,6 +2529,21 @@ namespace LevelEditor
             return obj;
         }
 
+        private string BuildIntersectionLabel(int intersectionCount, List<LaserColorKind> intersectionColors)
+        {
+            int count = Mathf.Clamp(intersectionCount, 2, 3);
+            List<string> parts = new();
+
+            for (int i = 0; i < count; i++)
+            {
+                LaserColorKind colorKind = intersectionColors != null && i < intersectionColors.Count ? intersectionColors[i] : LaserColorKind.Default;
+                Color color = ResolveLaserColor(colorKind, Color.white);
+                parts.Add($"<color=#{ColorUtility.ToHtmlStringRGBA(color)}>|</color>");
+            }
+
+            return string.Join(" ", parts);
+        }
+
         private void AddWorldLabel(Transform parent, string text, Vector3 localPosition, float fontSize, Color color, int sortingOrder)
         {
             GameObject obj = new GameObject("Label");
@@ -2523,6 +2553,7 @@ namespace LevelEditor
             obj.transform.localScale = Vector3.one;
             TextMeshPro tmp = obj.AddComponent<TextMeshPro>();
             tmp.font = uiFont;
+            tmp.richText = true;
             tmp.text = text;
             tmp.fontSize = fontSize * 10f;
             tmp.color = color;
@@ -2585,17 +2616,6 @@ namespace LevelEditor
             sorted.Sort((a, b) => a.CompareTo(b));
             editingStageData.sequenceLockPattern = sorted;
 
-            int lastSequenceIndex = sorted.Count > 0 ? sorted[sorted.Count - 1] : -1;
-
-            for (int i = 0; i < editingStageData.advancedTargets.Count; i++)
-            {
-                StageTargetData target = editingStageData.advancedTargets[i];
-                if (target == null)
-                    continue;
-
-                if (target.targetType == TargetType.SequenceLocked || target.targetType == TargetType.SequenceColorLocked)
-                    target.stopLaserOnHit = target.sequenceValue == lastSequenceIndex;
-            }
         }
 
         private int GetNextSequenceIndex()
@@ -2944,30 +2964,79 @@ namespace LevelEditor
 
         private void PickLoadFile()
         {
+            if (!CanOpenNativeFileDialog())
+                return;
+
+            BeginNativeFileDialog();
+
 #if UNITY_EDITOR
             string path = EditorUtility.OpenFilePanel("불러올 .tls 선택", StageFilePaths.MyCustomLevelsDirectory, "tls");
+            EndNativeFileDialog();
+
             if (!string.IsNullOrWhiteSpace(path))
             {
                 selectedLoadFilePath = path;
-                if (loadPathInput != null) loadPathInput.text = path;
+                if (loadPathInput != null)
+                    loadPathInput.SetTextWithoutNotify(path);
+
+                ClearCurrentUiSelection();
             }
 #else
+            EndNativeFileDialog();
             SetStatus("빌드 환경에서는 경로 입력칸에 .tls 전체 경로를 직접 입력하세요.");
 #endif
         }
 
         private void PickSaveFolder()
         {
+            if (!CanOpenNativeFileDialog())
+                return;
+
+            BeginNativeFileDialog();
+
 #if UNITY_EDITOR
             string path = EditorUtility.OpenFolderPanel("저장할 폴더 선택", StageFilePaths.MyCustomLevelsDirectory, "");
+            EndNativeFileDialog();
+
             if (!string.IsNullOrWhiteSpace(path))
             {
                 selectedSaveDirectory = path;
-                if (saveDirectoryInput != null) saveDirectoryInput.text = path;
+                if (saveDirectoryInput != null)
+                    saveDirectoryInput.SetTextWithoutNotify(path);
+
+                ClearCurrentUiSelection();
             }
 #else
+            EndNativeFileDialog();
             SetStatus("빌드 환경에서는 폴더 경로 입력칸에 직접 입력하세요.");
 #endif
+        }
+
+        private bool CanOpenNativeFileDialog()
+        {
+            if (isNativeFileDialogOpen)
+                return false;
+
+            return Time.unscaledTime - lastNativeFileDialogClosedTime > 0.25f;
+        }
+
+        private void BeginNativeFileDialog()
+        {
+            isNativeFileDialogOpen = true;
+            ClearCurrentUiSelection();
+        }
+
+        private void EndNativeFileDialog()
+        {
+            isNativeFileDialogOpen = false;
+            lastNativeFileDialogClosedTime = Time.unscaledTime;
+            ClearCurrentUiSelection();
+        }
+
+        private void ClearCurrentUiSelection()
+        {
+            if (EventSystem.current != null)
+                EventSystem.current.SetSelectedGameObject(null);
         }
 
         private void ShowMainPopup()

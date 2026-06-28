@@ -135,16 +135,15 @@ namespace Grid
             if (colorIndicatorRenderer != null)
             {
                 colorIndicatorRenderer.color = targetColor;
-                colorIndicatorRenderer.gameObject.SetActive(ShouldShowColorIndicator());
+                colorIndicatorRenderer.gameObject.SetActive(ShouldShowColorIndicator() && string.IsNullOrEmpty(symbol));
             }
-
 
             if (symbolText != null)
             {
+                symbolText.richText = true;
                 symbolText.text = symbol;
-                symbolText.color = targetColor;
+                symbolText.color = targetType == TargetType.Intersection ? Color.white : targetColor;
                 symbolText.gameObject.SetActive(!string.IsNullOrEmpty(symbol));
-                colorIndicatorRenderer.gameObject.SetActive(string.IsNullOrEmpty(symbol));
             }
         }
 
@@ -188,9 +187,28 @@ namespace Grid
                 return sequenceValue.ToString();
 
             if (targetType == TargetType.Intersection)
-                return intersectionTargetSymbol;
+                return BuildIntersectionSymbol();
 
             return showNormalTargetSymbol ? normalTargetSymbol : "";
+        }
+
+        private string BuildIntersectionSymbol()
+        {
+            int count = Mathf.Clamp(requiredIntersectionCount, 2, 3);
+
+            if (intersectionColors == null)
+                intersectionColors = new List<LaserColorKind>();
+
+            List<string> parts = new();
+
+            for (int i = 0; i < count; i++)
+            {
+                LaserColorKind colorKind = i < intersectionColors.Count ? intersectionColors[i] : LaserColorKind.Default;
+                Color color = ResolveLaserColor(colorKind);
+                parts.Add($"<color=#{ColorUtility.ToHtmlStringRGBA(color)}>|</color>");
+            }
+
+            return string.Join(" ", parts);
         }
 
         private Color ResolveLaserColor(LaserColorKind colorKind)
