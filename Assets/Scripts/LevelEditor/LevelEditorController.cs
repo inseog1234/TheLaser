@@ -102,8 +102,17 @@ namespace LevelEditor
         private RectTransform newLevelPopup;
         private RectTransform loadPopup;
         private RectTransform savePopup;
+        private RectTransform uploadPopup;
         private RectTransform solutionOverwritePopup;
         private RectTransform helpPanel;
+        private Button uploadButton;
+        private Button uploadPublishButton;
+        private TMP_InputField uploadNicknameInput;
+        private TMP_InputField uploadTitleInput;
+        private TMP_InputField uploadDescriptionInput;
+        private TMP_Text uploadValidationText;
+        private TMP_Text editorOnlineNoticeText;
+        private Coroutine editorNoticeRoutine;
         private TMP_Text descriptionTitleText;
         private TMP_Text descriptionBodyText;
         private TMP_Text statusText;
@@ -649,6 +658,7 @@ namespace LevelEditor
             BuildNewLevelPopup();
             BuildLoadPopup();
             BuildSavePopup();
+            BuildUploadPopup();
             BuildSolutionOverwritePopup();
             RebuildPalette();
             HideAllPopups();
@@ -725,18 +735,22 @@ namespace LevelEditor
             statusText.overflowMode = TextOverflowModes.Overflow;
             statusText.GetComponent<LayoutElement>().preferredHeight = 58f;
 
-            bottomActionPanel = CreatePanel("BottomActionPanel", canvasRect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-190f, 16f), new Vector2(190f, 70f), new Color(0.05f, 0.055f, 0.07f, 0.85f));
+            bottomActionPanel = CreatePanel("BottomActionPanel", canvasRect, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-430f, 16f), new Vector2(430f, 70f), new Color(0.05f, 0.055f, 0.07f, 0.85f));
             AddHorizontalLayout(bottomActionPanel, 8, 8, 8, 8, 10);
             Button testButton = AddButton(bottomActionPanel, "테스트", StartTestPlay, 90f, 38f);
             Button saveButton = AddButton(bottomActionPanel, "저장하기", ShowSavePopup, 120f, 38f);
             Button loadButton = AddButton(bottomActionPanel, "불러오기", ShowLoadPopup, 120f, 38f);
             Button mainButton = AddButton(bottomActionPanel, "메뉴", ShowMainPopup, 90f, 38f);
+            uploadButton = AddButton(bottomActionPanel, "업로드", ShowUploadPopup, 100f, 38f);
             Button titleButton = AddButton(bottomActionPanel, "타이틀", ReturnToTitle, 90f, 38f);
             testButton.name = "TestButton";
             saveButton.name = "SaveButton";
             loadButton.name = "LoadButton";
             mainButton.name = "MenuButton";
+            if (uploadButton != null) uploadButton.name = "UploadButton";
             titleButton.name = "TitleButton";
+            RefreshUploadButtonVisibility();
+            BuildEditorOnlineNotice();
 
             ApplyFloatingPanelsLayout();
         }
@@ -800,6 +814,21 @@ namespace LevelEditor
             AddButton(savePopup, "취소", () => HideAllPopups(), 600f, 42f);
             currentFileText = AddText(savePopup, "", 16, TextAlignmentOptions.Left, new Color(0.75f, 0.8f, 0.9f, 1f));
             currentFileText.enableWordWrapping = false;
+        }
+
+        private void BuildUploadPopup()
+        {
+            uploadPopup = CreateModalPanel("UploadPopup", 700f, 560f, "커스텀 맵 업로드");
+            uploadNicknameInput = AddInputRow(uploadPopup, "닉네임", "", value => RefreshUploadPublishButton());
+            uploadTitleInput = AddInputRow(uploadPopup, "게시물 이름", editingStageData != null ? editingStageData.stageName : "", value => RefreshUploadPublishButton());
+            uploadDescriptionInput = AddInputRow(uploadPopup, "게시물 설명", "", value => RefreshUploadPublishButton());
+            uploadValidationText = AddText(uploadPopup, "답안이 있는 맵만 업로드할 수 있습니다.", 18, TextAlignmentOptions.Left, new Color(0.85f, 0.9f, 1f, 1f));
+            uploadValidationText.enableWordWrapping = true;
+            uploadValidationText.overflowMode = TextOverflowModes.Overflow;
+            uploadValidationText.GetComponent<LayoutElement>().preferredHeight = 72f;
+            uploadPublishButton = AddButton(uploadPopup, "게시하기", PublishCurrentLevel, 600f, 52f);
+            AddButton(uploadPopup, "취소", () => HideAllPopups(), 600f, 42f);
+            RefreshUploadPublishButton();
         }
 
         private void BuildSolutionOverwritePopup()
@@ -946,15 +975,27 @@ namespace LevelEditor
 
             if (bottomActionPanel != null)
             {
+                bool hasUploadButton = uploadButton != null && uploadButton.gameObject.activeSelf;
+
                 if (isSettingsPanelExpanded)
                 {
-                    bottomActionPanel.offsetMin = new Vector2(-54f, 16f);
-                    bottomActionPanel.offsetMax = new Vector2(326f, 70f);
+                    bottomActionPanel.offsetMin = hasUploadButton
+                        ? new Vector2(-104f, 16f)
+                        : new Vector2(-54f, 16f);
+
+                    bottomActionPanel.offsetMax = hasUploadButton
+                        ? new Vector2(376f, 70f)
+                        : new Vector2(326f, 70f);
                 }
                 else
                 {
-                    bottomActionPanel.offsetMin = new Vector2(-190f, 16f);
-                    bottomActionPanel.offsetMax = new Vector2(190f, 70f);
+                    bottomActionPanel.offsetMin = hasUploadButton
+                        ? new Vector2(-245f, 16f)
+                        : new Vector2(-190f, 16f);
+
+                    bottomActionPanel.offsetMax = hasUploadButton
+                        ? new Vector2(245f, 70f)
+                        : new Vector2(190f, 70f);
                 }
             }
         }
@@ -1317,6 +1358,9 @@ namespace LevelEditor
 
             if (currentFileText != null)
                 currentFileText.text = string.IsNullOrWhiteSpace(currentFilePath) ? "현재 파일 없음" : currentFilePath;
+
+            RefreshUploadButtonVisibility();
+            RefreshUploadPublishButton();
         }
 
         private int NormalizeZoneOffsetValue(int size, int value)
@@ -3215,12 +3259,122 @@ namespace LevelEditor
             PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
         }
 
+        private void ShowUploadPopup()
+        {
+            if (editingStageData == null || !editingStageData.HasSolution)
+            {
+                ShowEditorNotice("답안이 있는 맵만 업로드할 수 있습니다.", true);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(currentFilePath) || !File.Exists(currentFilePath))
+                SaveCurrentStageToPath(Path.Combine(ExportDirectory, StageFilePaths.NormalizeStageFileName(selectedSaveFileName)), false);
+
+            HideAllPopups(false);
+            if (uploadPopup != null)
+                uploadPopup.gameObject.SetActive(true);
+
+            if (uploadTitleInput != null && string.IsNullOrWhiteSpace(uploadTitleInput.text))
+                uploadTitleInput.SetTextWithoutNotify(string.IsNullOrWhiteSpace(editingStageData.stageName) ? selectedSaveFileName : editingStageData.stageName);
+
+            RefreshUploadPublishButton();
+            PlayEditorSfx(FmodRuntimeAudio.SfxUiOpen);
+        }
+
+        private void RefreshUploadButtonVisibility()
+        {
+            if (uploadButton == null)
+                return;
+
+            bool canShow = editingStageData != null && editingStageData.HasSolution;
+            uploadButton.gameObject.SetActive(canShow);
+
+            ApplyFloatingPanelsLayout();
+        }
+
+        private void RefreshUploadPublishButton()
+        {
+            bool hasInputs = uploadNicknameInput != null && uploadTitleInput != null && uploadDescriptionInput != null &&
+                !string.IsNullOrWhiteSpace(uploadNicknameInput.text) &&
+                !string.IsNullOrWhiteSpace(uploadTitleInput.text) &&
+                !string.IsNullOrWhiteSpace(uploadDescriptionInput.text);
+            bool hasSolution = editingStageData != null && editingStageData.HasSolution;
+            bool hasSavedFile = !string.IsNullOrWhiteSpace(currentFilePath) && File.Exists(currentFilePath);
+
+            if (uploadPublishButton != null)
+                uploadPublishButton.interactable = hasInputs && hasSolution && hasSavedFile;
+
+            if (uploadValidationText != null)
+            {
+                if (!hasSolution)
+                    uploadValidationText.text = "답안이 없습니다. 테스트 플레이로 클리어해서 답안을 먼저 기록하세요.";
+                else if (!hasSavedFile)
+                    uploadValidationText.text = "업로드 전에 .tls 저장이 필요합니다. 업로드 버튼을 열 때 자동 저장을 시도합니다.";
+                else if (!hasInputs)
+                    uploadValidationText.text = "닉네임, 게시물 이름, 게시물 설명을 모두 입력하면 게시하기가 활성화됩니다.";
+                else
+                    uploadValidationText.text = "게시 준비 완료";
+            }
+        }
+
+        private void PublishCurrentLevel()
+        {
+            RefreshUploadPublishButton();
+            if (uploadPublishButton == null || !uploadPublishButton.interactable)
+                return;
+
+            ShowEditorNotice("게시 중...", false);
+            uploadPublishButton.interactable = false;
+            StartCoroutine(SupabaseCustomLevelService.Instance.UploadCustomLevel(currentFilePath, editingStageData, uploadNicknameInput.text.Trim(), uploadTitleInput.text.Trim(), uploadDescriptionInput.text.Trim(), (success, message) =>
+            {
+                ShowEditorNotice(message, !success);
+                if (success)
+                {
+                    HideAllPopups(false);
+                    PlayEditorSfx(FmodRuntimeAudio.SfxUiConfirmation);
+                }
+                RefreshUploadPublishButton();
+            }));
+        }
+
+        private void BuildEditorOnlineNotice()
+        {
+            RectTransform panel = CreatePanel("EditorOnlineNotice", canvasRect, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-470f, -72f), new Vector2(-18f, -18f), new Color(0.03f, 0.035f, 0.045f, 0.92f));
+            AddVerticalLayout(panel, 8, 8, 8, 8, 0);
+            editorOnlineNoticeText = AddText(panel, "", 18, TextAlignmentOptions.Right, Color.white);
+            editorOnlineNoticeText.enableWordWrapping = true;
+            panel.gameObject.SetActive(false);
+        }
+
+        private void ShowEditorNotice(string message, bool error)
+        {
+            if (editorOnlineNoticeText == null)
+                return;
+
+            editorOnlineNoticeText.text = message;
+            editorOnlineNoticeText.color = error ? new Color(1f, 0.35f, 0.35f, 1f) : new Color(0.7f, 0.95f, 1f, 1f);
+            editorOnlineNoticeText.transform.parent.gameObject.SetActive(true);
+
+            if (editorNoticeRoutine != null)
+                StopCoroutine(editorNoticeRoutine);
+            editorNoticeRoutine = StartCoroutine(HideEditorNoticeRoutine());
+        }
+
+        private System.Collections.IEnumerator HideEditorNoticeRoutine()
+        {
+            yield return new WaitForSecondsRealtime(2.4f);
+            if (editorOnlineNoticeText != null)
+                editorOnlineNoticeText.transform.parent.gameObject.SetActive(false);
+            editorNoticeRoutine = null;
+        }
+
         private bool IsAnyPopupOpen()
         {
             return (mainPopup != null && mainPopup.gameObject.activeSelf) ||
                 (newLevelPopup != null && newLevelPopup.gameObject.activeSelf) ||
                 (loadPopup != null && loadPopup.gameObject.activeSelf) ||
                 (savePopup != null && savePopup.gameObject.activeSelf) ||
+                (uploadPopup != null && uploadPopup.gameObject.activeSelf) ||
                 (solutionOverwritePopup != null && solutionOverwritePopup.gameObject.activeSelf);
         }
 
@@ -3231,6 +3385,7 @@ namespace LevelEditor
             if (newLevelPopup != null) newLevelPopup.gameObject.SetActive(false);
             if (loadPopup != null) loadPopup.gameObject.SetActive(false);
             if (savePopup != null) savePopup.gameObject.SetActive(false);
+            if (uploadPopup != null) uploadPopup.gameObject.SetActive(false);
             if (solutionOverwritePopup != null) solutionOverwritePopup.gameObject.SetActive(false);
 
             if (playSound && hadOpenPopup)

@@ -31,8 +31,15 @@ namespace UI.Title
         private RectTransform stagePopup;
         private RectTransform customPopup;
         private RectTransform customLevelPopup;
+        private RectTransform customDownloadPopup;
+        private RectTransform customDownloadContent;
         private RectTransform settingsPopup;
         private string selectedCustomLevelPath;
+        private CustomLevelPostData selectedDownloadPost;
+        private Button downloadSelectedButton;
+        private TMP_Text titleOnlineNoticeText;
+        private Coroutine titleNoticeRoutine;
+        private readonly List<CustomLevelPostData> downloadedPosts = new();
         private FmodRuntimeAudio audioController;
 
         private void Awake()
@@ -92,13 +99,15 @@ namespace UI.Title
             BuildStagePopup();
             BuildCustomPopup();
             BuildCustomLevelPopup();
+            BuildCustomDownloadPopup();
             BuildSettingsPopup();
+            BuildTitleOnlineNotice();
             HideAllPopups(false);
         }
 
         private void BuildStagePopup()
         {
-            stagePopup = CreateModal("StageListPopup", 480f, 760f, "스테이지 목록");
+            stagePopup = CreateModal("StageListPopup", 480f, 830f, "스테이지 목록");
             ScrollRect scrollRect = CreateScroll(stagePopup, "StageScroll", out RectTransform content);
             scrollRect.GetComponent<LayoutElement>().preferredHeight = 600f;
 
@@ -120,6 +129,7 @@ namespace UI.Title
             for (int i = 0; i < keys.Count; i++)
                 AddChapterBlock(content, keys[i], byChapter[keys[i]]);
 
+            AddText(stagePopup, "모든 챕터는 5스테이지까지 진행하면 다음 챕터가 해금 됩니다.", 16, TextAlignmentOptions.Center, new Color(0.55f, 0.9f, 1f, 1f), true);
             AddButton(stagePopup, "닫기", HideAllPopups, 420f, 48f);
         }
 
@@ -153,8 +163,9 @@ namespace UI.Title
 
         private void BuildCustomPopup()
         {
-            customPopup = CreateModal("CustomPopup", 520f, 320f, "커스텀");
+            customPopup = CreateModal("CustomPopup", 520f, 400f, "커스텀");
             AddButton(customPopup, "레벨 플레이", ShowCustomLevelPopup, 420f, 58f);
+            AddButton(customPopup, "레벨 다운로드", ShowCustomDownloadPopup, 420f, 58f);
             AddButton(customPopup, "레벨 만들기", OpenLevelEditor, 420f, 58f);
             AddButton(customPopup, "닫기", HideAllPopups, 420f, 44f);
         }
@@ -183,6 +194,17 @@ namespace UI.Title
                 string file = files[i];
                 AddButton(content, Path.GetFileName(file), () => selectedCustomLevelPath = file, 620f, 46f);
             }
+        }
+
+        private void BuildCustomDownloadPopup()
+        {
+            customDownloadPopup = CreateModal("CustomDownloadPopup", 860f, 700f, "레벨 다운로드");
+            ScrollRect scroll = CreateScroll(customDownloadPopup, "CustomDownloadScroll", out customDownloadContent);
+            scroll.GetComponent<LayoutElement>().preferredHeight = 500f;
+            downloadSelectedButton = AddButton(customDownloadPopup, "다운로드", DownloadSelectedOnlineLevel, 760f, 54f);
+            downloadSelectedButton.interactable = false;
+            AddButton(customDownloadPopup, "새로고침", RefreshOnlineLevelList, 760f, 44f);
+            AddButton(customDownloadPopup, "닫기", HideAllPopups, 760f, 42f);
         }
 
         private void BuildSettingsPopup()
@@ -248,6 +270,113 @@ namespace UI.Title
             PlayUiConfirmation();
             GameSceneRequest.RequestBuiltInStage(entry.Path);
             SceneFadeController.Instance.LoadScene(gameSceneName);
+        }
+
+        private void RefreshCustomLevelPopupList()
+        {
+            if (customLevelPopup == null)
+                return;
+
+            ScrollRect scroll = customLevelPopup.GetComponentInChildren<ScrollRect>();
+            if (scroll == null || scroll.content == null)
+                return;
+
+            ClearChildren(scroll.content);
+            BuildCustomLevelList(scroll.content);
+        }
+
+        private void ShowCustomDownloadPopup()
+        {
+            HideAllPopups(false);
+            if (customDownloadPopup != null)
+                customDownloadPopup.gameObject.SetActive(true);
+            PlayUiOpen();
+            RefreshOnlineLevelList();
+        }
+
+        private void RefreshOnlineLevelList()
+        {
+            selectedDownloadPost = null;
+            if (downloadSelectedButton != null)
+                downloadSelectedButton.interactable = false;
+
+            if (customDownloadContent != null)
+            {
+                ClearChildren(customDownloadContent);
+                AddText(customDownloadContent, "목록 불러오는 중...", 22, TextAlignmentOptions.Center, Color.white, true);
+            }
+
+            StartCoroutine(SupabaseCustomLevelService.Instance.FetchCustomLevels((success, message, posts) =>
+            {
+                if (!success)
+                {
+                    ShowTitleNotice(message, true);
+                    if (customDownloadContent != null)
+                    {
+                        ClearChildren(customDownloadContent);
+                        AddText(customDownloadContent, message, 20, TextAlignmentOptions.Center, new Color(1f, 0.45f, 0.45f, 1f), true);
+                    }
+                    return;
+                }
+
+                downloadedPosts.Clear();
+                if (posts != null)
+                    downloadedPosts.AddRange(posts);
+                RebuildOnlineLevelList();
+            }));
+        }
+
+        private void RebuildOnlineLevelList()
+        {
+            if (customDownloadContent == null)
+                return;
+
+            ClearChildren(customDownloadContent);
+            if (downloadedPosts.Count <= 0)
+            {
+                AddText(customDownloadContent, "업로드된 레벨이 없습니다.", 22, TextAlignmentOptions.Center, Color.white, true);
+                return;
+            }
+
+            for (int i = 0; i < downloadedPosts.Count; i++)
+            {
+                CustomLevelPostData post = downloadedPosts[i];
+                RectTransform card = CreatePanel("OnlineLevelCard", customDownloadContent, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.08f, 0.095f, 0.13f, 1f));
+                card.gameObject.AddComponent<LayoutElement>().preferredHeight = 132f;
+                AddVertical(card, 10, 10, 8, 8, 3).childForceExpandHeight = false;
+                AddText(card, post.DisplayTitle, 24, TextAlignmentOptions.Left, Color.white, false);
+                AddText(card, "닉네임: " + post.DisplayNickname, 17, TextAlignmentOptions.Left, new Color(0.7f, 0.9f, 1f, 1f), false);
+                TMP_Text desc = AddText(card, post.DisplayDescription, 16, TextAlignmentOptions.Left, new Color(0.84f, 0.87f, 0.94f, 1f), true);
+                desc.GetComponent<LayoutElement>().preferredHeight = 44f;
+                Button selectButton = card.gameObject.AddComponent<Button>();
+                selectButton.onClick.AddListener(() => SelectOnlinePost(post));
+            }
+        }
+
+        private void SelectOnlinePost(CustomLevelPostData post)
+        {
+            selectedDownloadPost = post;
+            if (downloadSelectedButton != null)
+                downloadSelectedButton.interactable = selectedDownloadPost != null;
+            ShowTitleNotice("선택됨: " + (post != null ? post.DisplayTitle : "없음"), false);
+        }
+
+        private void DownloadSelectedOnlineLevel()
+        {
+            if (selectedDownloadPost == null)
+                return;
+
+            ShowTitleNotice("다운로드중...", false);
+            bool success = SupabaseCustomLevelService.Instance.SaveDownloadedLevel(selectedDownloadPost, out string path, out string error);
+            if (!success)
+            {
+                ShowTitleNotice(error, true);
+                return;
+            }
+
+            ShowTitleNotice("다운로드 완료!", false);
+            selectedCustomLevelPath = path;
+            RefreshCustomLevelPopupList();
         }
 
         private void PlaySelectedCustomLevel()
@@ -325,6 +454,12 @@ namespace UI.Title
                 closedAny = true;
             }
 
+            if (customDownloadPopup != null && customDownloadPopup.gameObject.activeSelf)
+            {
+                customDownloadPopup.gameObject.SetActive(false);
+                closedAny = true;
+            }
+
             if (settingsPopup != null && settingsPopup.gameObject.activeSelf)
             {
                 settingsPopup.gameObject.SetActive(false);
@@ -371,6 +506,45 @@ namespace UI.Title
                 audioController = FmodRuntimeAudio.EnsureInstance();
 
             audioController?.PlaySfx(eventPath);
+        }
+
+        private void BuildTitleOnlineNotice()
+        {
+            RectTransform panel = CreatePanel("TitleOnlineNotice", root, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(18f, -74f), new Vector2(470f, -18f), new Color(0.03f, 0.035f, 0.045f, 0.92f));
+            AddVertical(panel, 8, 8, 8, 8, 0);
+            titleOnlineNoticeText = AddText(panel, "", 18, TextAlignmentOptions.Left, Color.white, true);
+            panel.gameObject.SetActive(false);
+        }
+
+        private void ShowTitleNotice(string message, bool error)
+        {
+            if (titleOnlineNoticeText == null)
+                return;
+
+            titleOnlineNoticeText.text = message;
+            titleOnlineNoticeText.color = error ? new Color(1f, 0.35f, 0.35f, 1f) : new Color(0.7f, 0.95f, 1f, 1f);
+            titleOnlineNoticeText.transform.parent.gameObject.SetActive(true);
+
+            if (titleNoticeRoutine != null)
+                StopCoroutine(titleNoticeRoutine);
+            titleNoticeRoutine = StartCoroutine(HideTitleNoticeRoutine());
+        }
+
+        private System.Collections.IEnumerator HideTitleNoticeRoutine()
+        {
+            yield return new WaitForSecondsRealtime(2.4f);
+            if (titleOnlineNoticeText != null)
+                titleOnlineNoticeText.transform.parent.gameObject.SetActive(false);
+            titleNoticeRoutine = null;
+        }
+
+        private void ClearChildren(Transform parent)
+        {
+            if (parent == null)
+                return;
+
+            for (int i = parent.childCount - 1; i >= 0; i--)
+                Destroy(parent.GetChild(i).gameObject);
         }
 
         private RectTransform CreateModal(string name, float width, float height, string title)
