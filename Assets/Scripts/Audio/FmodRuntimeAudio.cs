@@ -35,7 +35,7 @@ namespace Audio
         public const string SfxEditorSelect2 = "event:/SFX/EditorSelect2";
         public const string SfxEditorCheckBox = "event:/SFX/EditorCheckBox";
         public const string SfxEditorTrigger = "event:/SFX/EditorTrigger";
-        public const string SfxStageClear = "event:/SFX/StageClear";
+        public const string SfxStageClear = "event:/SFX/StageOpen";
         public const string SfxFunc = "event:/SFX/Func";
         public const string SfxObjPushAndRotate = "event:/SFX/ObjPushAndRotate";
 

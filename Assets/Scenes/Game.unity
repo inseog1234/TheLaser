@@ -2158,7 +2158,7 @@ MonoBehaviour:
   laserSimulator: {fileID: 983199443}
   laserRenderer: {fileID: 983199442}
   gridManager: {fileID: 1272788211}
-  laserRemainingText: {fileID: 0}
+  laserRemainingText: {fileID: 1598907043}
   limitedFormat: "\uB808\uC774\uC800 \uC794\uC5EC \uCE78 : {0}\uCE78"
   unlimitedText: "\uB808\uC774\uC800 \uC794\uC5EC \uCE78 : \uC81C\uD55C \uC5C6\uC74C"
 --- !u!114 &983199442

@@ -112,6 +112,7 @@ namespace LevelEditor
         private TMP_InputField runtimeHeightInput;
         private TMP_InputField runtimeLaserInput;
         private TMP_InputField runtimeMoveInput;
+        private TMP_Dropdown runtimeBgmDropdown;
         private TMP_InputField newStageNameInput;
         private TMP_InputField newWidthInput;
         private TMP_InputField newHeightInput;
@@ -576,7 +577,7 @@ namespace LevelEditor
 
         private void BuildRuntimeSettingsPanel()
         {
-            runtimeSettingsPanel = CreatePanel("RuntimeSettingsPanel", canvasRect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -170f), new Vector2(420f, -12f), new Color(0.09f, 0.11f, 0.15f, 0.94f));
+            runtimeSettingsPanel = CreatePanel("RuntimeSettingsPanel", canvasRect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -286f), new Vector2(420f, -12f), new Color(0.09f, 0.11f, 0.15f, 0.94f));
             VerticalLayoutGroup layout = AddVerticalLayout(runtimeSettingsPanel, 8, 8, 8, 8, 6);
             layout.childForceExpandHeight = false;
             AddText(runtimeSettingsPanel, "런타임 설정", 24, TextAlignmentOptions.Left, Color.white);
@@ -584,12 +585,16 @@ namespace LevelEditor
             runtimeHeightInput = AddInputRow(runtimeSettingsPanel, "세로 칸", "8", value => ApplyRuntimeSettingInputs());
             runtimeLaserInput = AddInputRow(runtimeSettingsPanel, "레이저 최대 길이", "8", value => ApplyRuntimeSettingInputs());
             runtimeMoveInput = AddInputRow(runtimeSettingsPanel, "이동 제한 행동 수", "0", value => ApplyRuntimeSettingInputs());
-            gridInfoText = AddText(runtimeSettingsPanel, "", 18, TextAlignmentOptions.Left, new Color(0.85f, 0.9f, 1f, 1f));
+            runtimeBgmDropdown = AddDropdownRow(runtimeSettingsPanel, "레벨 BGM", BgmDisplayNames(), FindBgmIndex(editingStageData != null ? editingStageData.bgmEventPath : string.Empty), ApplyRuntimeBgmDropdown);
+            gridInfoText = AddText(runtimeSettingsPanel, "", 16, TextAlignmentOptions.Left, new Color(0.85f, 0.9f, 1f, 1f));
+            gridInfoText.enableWordWrapping = true;
+            gridInfoText.overflowMode = TextOverflowModes.Overflow;
+            gridInfoText.GetComponent<LayoutElement>().preferredHeight = 44f;
         }
 
         private void BuildLeftPanel()
         {
-            leftPanel = CreatePanel("FunctionPanel", canvasRect, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(12f, 12f), new Vector2(420f, -188f), new Color(0.075f, 0.08f, 0.105f, 0.95f));
+            leftPanel = CreatePanel("FunctionPanel", canvasRect, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(12f, 12f), new Vector2(420f, -304f), new Color(0.075f, 0.08f, 0.105f, 0.95f));
             VerticalLayoutGroup rootLayout = AddVerticalLayout(leftPanel, 8, 8, 8, 8, 8);
             rootLayout.childForceExpandHeight = false;
             AddText(leftPanel, "기능 패널", 28, TextAlignmentOptions.Left, Color.white);
@@ -1156,6 +1161,24 @@ namespace LevelEditor
             RebuildStageVisuals();
         }
 
+        private void ApplyRuntimeBgmDropdown(int index)
+        {
+            if (suppressRuntimeSettingEvent || editingStageData == null)
+                return;
+
+            int finalIndex = Mathf.Clamp(index, 0, BgmDisplayNames().Count - 1);
+            editingStageData.bgmEventPath = GetBgmEventPathByIndex(finalIndex);
+
+            if (runtimeBgmDropdown != null)
+            {
+                runtimeBgmDropdown.SetValueWithoutNotify(finalIndex);
+                runtimeBgmDropdown.RefreshShownValue();
+            }
+
+            RefreshRuntimeSettingsPanel();
+            SetStatus($"레벨 BGM 변경: {BgmDisplayNames()[finalIndex]}");
+        }
+
         private void ApplyRuntimeSettingInputs()
         {
             if (suppressRuntimeSettingEvent || editingStageData == null)
@@ -1184,10 +1207,15 @@ namespace LevelEditor
             if (runtimeHeightInput != null) runtimeHeightInput.text = editingStageData.height.ToString();
             if (runtimeLaserInput != null) runtimeLaserInput.text = editingStageData.laserMaxDistance.ToString();
             if (runtimeMoveInput != null) runtimeMoveInput.text = editingStageData.moveLimit.ToString();
+            if (runtimeBgmDropdown != null)
+            {
+                runtimeBgmDropdown.SetValueWithoutNotify(FindBgmIndex(editingStageData.bgmEventPath));
+                runtimeBgmDropdown.RefreshShownValue();
+            }
             suppressRuntimeSettingEvent = false;
 
             if (gridInfoText != null)
-                gridInfoText.text = $"현재 맵: {editingStageData.width} x {editingStageData.height} / 레이저 {(editingStageData.laserMaxDistance <= 0 ? "무제한" : editingStageData.laserMaxDistance + "칸")} / 이동 {(editingStageData.moveLimit <= 0 ? "무제한" : editingStageData.moveLimit + "회")}";
+                gridInfoText.text = $"현재 맵: {editingStageData.width} x {editingStageData.height} / 레이저 {(editingStageData.laserMaxDistance <= 0 ? "무제한" : editingStageData.laserMaxDistance + "칸")} / 이동 {(editingStageData.moveLimit <= 0 ? "무제한" : editingStageData.moveLimit + "회")}\nBGM {BgmDisplayNames()[FindBgmIndex(editingStageData.bgmEventPath)]}";
 
             if (currentFileText != null)
                 currentFileText.text = string.IsNullOrWhiteSpace(currentFilePath) ? "현재 파일 없음" : currentFilePath;
@@ -3229,6 +3257,7 @@ namespace LevelEditor
         private TMP_InputField AddInputRow(Transform parent, string label, string value, Action<string> onEndEdit)
         {
             RectTransform row = CreateUIObject(label + "Row", parent);
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 36f;
             AddHorizontalLayout(row, 0, 0, 0, 0, 8);
             TMP_Text labelText = AddText(row, label, 17, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 1f, 1f));
             labelText.GetComponent<LayoutElement>().preferredWidth = 170f;
@@ -3386,6 +3415,7 @@ namespace LevelEditor
         private TMP_Dropdown AddDropdownRow(Transform parent, string label, List<string> options, int value, Action<int> onChanged)
         {
             RectTransform row = CreateUIObject(label + "DropdownRow", parent);
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 36f;
             AddHorizontalLayout(row, 0, 0, 0, 0, 8);
             TMP_Text labelText = AddText(row, label, 17, TextAlignmentOptions.Left, new Color(0.86f, 0.9f, 1f, 1f));
             labelText.GetComponent<LayoutElement>().preferredWidth = 150f;
