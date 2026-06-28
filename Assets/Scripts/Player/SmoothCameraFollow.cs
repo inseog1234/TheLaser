@@ -36,7 +36,7 @@ namespace Player
         [SerializeField] private float clearHoleReturnDuration = 0.45f;
         [SerializeField] private bool suppressLaserFramingAfterClearHoleAppears = true;
         [SerializeField] private float playerMoveCancelThreshold = 0.05f;
-        [SerializeField] private bool resetZoomImmediatelyWhenPlayerMovesDuringHoleFocus = true;
+        [SerializeField] private bool resetZoomImmediatelyWhenPlayerMovesDuringHoleFocus = false;
         [SerializeField] private AnimationCurve clearHoleFocusCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Map Overview")]
@@ -220,8 +220,9 @@ namespace Player
             velocity = Vector3.zero;
             zoomVelocity = 0f;
 
-            if (restoreDefaultZoom && targetCamera != null && resetZoomImmediatelyWhenPlayerMovesDuringHoleFocus)
-                targetCamera.orthographicSize = defaultOrthographicSize;
+            // 이동으로 구멍 포커스를 취소할 때는 즉시 줌을 풀지 않고,
+            // 다음 LateUpdate의 SmoothDamp가 기본 카메라 크기까지 부드럽게 복귀시킨다.
+            // resetZoomImmediatelyWhenPlayerMovesDuringHoleFocus 값은 예전 씬 직렬화 호환용으로만 남겨둔다.
         }
 
         public void ResetToDefaultSize(bool snap = false)
