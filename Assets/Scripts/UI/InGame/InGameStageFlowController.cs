@@ -55,6 +55,10 @@ namespace UI.InGame
         [SerializeField, Range(1f, 6f)] private float autoSolverHeuristicWeight = 3f;
         [SerializeField] private int autoSolverBeamWidth = 1024;
 
+        [Header("Solution Playback Cheat")]
+        [SerializeField] private bool enableSolutionPlaybackCheat = true;
+        [SerializeField] private float solutionPlaybackReturnDuration = 0.18f;
+
         private TMP_FontAsset font;
         private Sprite whiteSprite;
         private Canvas canvas;
@@ -68,12 +72,24 @@ namespace UI.InGame
         private RectTransform holeVisual;
         private StageData currentStage;
         private readonly List<StageSolutionActionData> editorRecordedSolutionActions = new();
+        private readonly List<List<StageSolutionActionData>> editorRecordedSolutionUndoSnapshots = new();
+        private readonly List<List<StageSolutionActionData>> editorRecordedSolutionRedoSnapshots = new();
         private StageData autoSolverInitialStageData;
         private TMP_Text autoSolverStatusText;
         private Coroutine autoSolverRoutine;
         private int autoSolverSpeedMultiplier = 1;
         private bool isAutoSolverRunning;
         private bool previousInputEnabledBeforeAutoSolver = true;
+        private Coroutine solutionPlaybackRoutine;
+        private readonly List<StageSolutionActionData> solutionPlaybackActions = new();
+        private bool isSolutionPlaybackRunning;
+        private bool solutionPlaybackPaused;
+        private bool solutionPlaybackStopRequested;
+        private int solutionPlaybackNextActionIndex;
+        private Vector2Int solutionPlaybackPausedGridPosition;
+        private GridDirection solutionPlaybackPausedFacingDirection = GridDirection.Right;
+        private bool previousInputEnabledBeforeSolutionPlayback = true;
+        private bool previousRecordingEnabledBeforeSolutionPlayback;
         private bool isRecordingEditorSolution;
         private bool stageSolved;
         private bool pauseOpen;
@@ -116,6 +132,9 @@ namespace UI.InGame
                 turnHistoryController.SetTurnCountingEnabled(true);
                 turnHistoryController.ClearHistory();
                 turnHistoryController.TurnCountChanged += UpdateMoveLimitText;
+                turnHistoryController.UndoApplied += HandleRecordedSolutionUndoApplied;
+                turnHistoryController.RedoApplied += HandleRecordedSolutionRedoApplied;
+                turnHistoryController.HistoryCleared += HandleRecordedSolutionHistoryCleared;
             }
 
             UpdateMoveLimitText();
@@ -132,7 +151,7 @@ namespace UI.InGame
             if (laserShooter != null)
                 laserShooter.LaserFiredFromPlayer += HandleLaserFiredFromPlayer;
 
-            editorRecordedSolutionActions.Clear();
+            ClearRecordedSolutionTimeline();
             isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay || GameSceneRequest.IsEditorBatchSolutionProcessing;
 
             if (audioController != null && currentStage != null)
@@ -163,7 +182,12 @@ namespace UI.InGame
             }
 
             if (turnHistoryController != null)
+            {
                 turnHistoryController.TurnCountChanged -= UpdateMoveLimitText;
+                turnHistoryController.UndoApplied -= HandleRecordedSolutionUndoApplied;
+                turnHistoryController.RedoApplied -= HandleRecordedSolutionRedoApplied;
+                turnHistoryController.HistoryCleared -= HandleRecordedSolutionHistoryCleared;
+            }
 
             if (playerController != null)
                 playerController.SolutionActionPerformed -= HandleSolutionActionPerformed;
@@ -249,7 +273,7 @@ namespace UI.InGame
 
         private void HandleEditorAutoSolverHotkeys()
         {
-            if (!enableEditorAutoSolver || !GameSceneRequest.IsEditorTestPlay || Keyboard.current == null)
+            if (Keyboard.current == null)
                 return;
 
             if (Keyboard.current.digit1Key.wasPressedThisFrame || Keyboard.current.numpad1Key.wasPressedThisFrame)
@@ -262,14 +286,334 @@ namespace UI.InGame
                 SetAutoSolverSpeed(3);
 
             if (Keyboard.current.pKey.wasPressedThisFrame)
-                StartEditorAutoSolver();
+                ToggleSolutionPlaybackCheat();
         }
 
         private void SetAutoSolverSpeed(int multiplier)
         {
             autoSolverSpeedMultiplier = Mathf.Clamp(multiplier, 1, 3);
 
-            ShowAutoSolverStatus($"AI 자동 풀이 {autoSolverSpeedMultiplier}배속", new Color(0.55f, 0.85f, 1f, 1f));
+            if (isSolutionPlaybackRunning)
+                ShowAutoSolverStatus($"답안 시뮬레이션 {autoSolverSpeedMultiplier}배속  {solutionPlaybackNextActionIndex}/{solutionPlaybackActions.Count}", new Color(0.55f, 0.85f, 1f, 1f));
+            else if (solutionPlaybackPaused)
+                ShowAutoSolverStatus($"답안 시뮬레이션 정지  {autoSolverSpeedMultiplier}배속  {solutionPlaybackNextActionIndex}/{solutionPlaybackActions.Count}  P: 재개", new Color(1f, 0.85f, 0.35f, 1f));
+            else if (isAutoSolverRunning)
+                ShowAutoSolverStatus($"AI 자동 풀이 {autoSolverSpeedMultiplier}배속", new Color(0.55f, 0.85f, 1f, 1f));
+            else
+                ShowAutoSolverStatus($"시뮬레이션 배속 {autoSolverSpeedMultiplier}배속", new Color(0.55f, 0.85f, 1f, 1f));
+        }
+
+        private void ToggleSolutionPlaybackCheat()
+        {
+            if (!enableSolutionPlaybackCheat)
+                return;
+
+            if (GameSceneRequest.IsEditorBatchSolutionProcessing)
+                return;
+
+            if (pauseOpen || tutorialOpen || isJumpingIntoHole)
+                return;
+
+            if (isSolutionPlaybackRunning)
+            {
+                RequestStopSolutionPlayback();
+                return;
+            }
+
+            if (solutionPlaybackPaused)
+            {
+                ResumeSolutionPlaybackFromPausedPoint();
+                return;
+            }
+
+            StartSolutionPlaybackFromBeginning();
+        }
+
+        private void StartSolutionPlaybackFromBeginning()
+        {
+            if (!TryPrepareSolutionPlaybackActions(out string message))
+            {
+                ShowAutoSolverStatus(message, new Color(1f, 0.35f, 0.35f, 1f));
+                return;
+            }
+
+            StopAutoSolverRoutine(true);
+            StopSolutionPlaybackRoutine(false);
+
+            solutionPlaybackPaused = false;
+            solutionPlaybackStopRequested = false;
+            solutionPlaybackNextActionIndex = 0;
+            solutionPlaybackPausedGridPosition = autoSolverInitialStageData != null ? autoSolverInitialStageData.playerStartPosition : currentStage != null ? currentStage.playerStartPosition : Vector2Int.zero;
+            solutionPlaybackPausedFacingDirection = autoSolverInitialStageData != null ? autoSolverInitialStageData.playerStartDirection : currentStage != null ? currentStage.playerStartDirection : GridDirection.Right;
+
+            solutionPlaybackRoutine = StartCoroutine(SolutionPlaybackRoutine(true));
+        }
+
+        private void ResumeSolutionPlaybackFromPausedPoint()
+        {
+            if (solutionPlaybackActions.Count == 0 && !TryPrepareSolutionPlaybackActions(out string message))
+            {
+                ShowAutoSolverStatus(message, new Color(1f, 0.35f, 0.35f, 1f));
+                solutionPlaybackPaused = false;
+                return;
+            }
+
+            StopAutoSolverRoutine(true);
+            StopSolutionPlaybackRoutine(false);
+            solutionPlaybackStopRequested = false;
+            solutionPlaybackRoutine = StartCoroutine(SolutionPlaybackRoutine(false));
+        }
+
+        private bool TryPrepareSolutionPlaybackActions(out string message)
+        {
+            message = string.Empty;
+            StageData source = autoSolverInitialStageData != null ? autoSolverInitialStageData : currentStage;
+
+            if (source == null)
+            {
+                message = "현재 스테이지 데이터가 없습니다.";
+                return false;
+            }
+
+            if (source.solutionActions == null || source.solutionActions.Count == 0)
+            {
+                message = "저장된 답안지가 없습니다.";
+                return false;
+            }
+
+            solutionPlaybackActions.Clear();
+            for (int i = 0; i < source.solutionActions.Count; i++)
+            {
+                if (source.solutionActions[i] != null)
+                    solutionPlaybackActions.Add(source.solutionActions[i].Clone());
+            }
+
+            if (solutionPlaybackActions.Count == 0)
+            {
+                message = "저장된 답안지가 비어 있습니다.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private void RequestStopSolutionPlayback()
+        {
+            solutionPlaybackStopRequested = true;
+            ShowAutoSolverStatus($"답안 시뮬레이션 정지 중... {autoSolverSpeedMultiplier}배속", new Color(1f, 0.85f, 0.35f, 1f));
+        }
+
+        private IEnumerator SolutionPlaybackRoutine(bool resetStage)
+        {
+            isSolutionPlaybackRunning = true;
+            solutionPlaybackStopRequested = false;
+            previousInputEnabledBeforeSolutionPlayback = inputReader == null || inputReader.InputEnabled;
+            previousRecordingEnabledBeforeSolutionPlayback = isRecordingEditorSolution;
+
+            if (inputReader != null)
+                inputReader.InputEnabled = false;
+
+            if (playerController != null)
+                playerController.SetControlsEnabled(true);
+
+            isRecordingEditorSolution = false;
+
+            if (resetStage)
+            {
+                ResetStageForSolutionPlayback();
+                solutionPlaybackNextActionIndex = 0;
+            }
+            else
+            {
+                ShowAutoSolverStatus($"멈춘 위치로 복귀 중... {autoSolverSpeedMultiplier}배속", new Color(0.55f, 0.85f, 1f, 1f));
+                yield return MovePlayerToSolutionPlaybackPausedPoint();
+            }
+
+            int totalCount = solutionPlaybackActions.Count;
+            if (solutionPlaybackNextActionIndex < 0)
+                solutionPlaybackNextActionIndex = 0;
+
+            if (solutionPlaybackNextActionIndex > totalCount)
+                solutionPlaybackNextActionIndex = totalCount;
+
+            ShowAutoSolverStatus($"답안 시뮬레이션 시작 {autoSolverSpeedMultiplier}배속  {solutionPlaybackNextActionIndex}/{totalCount}", new Color(0.55f, 0.85f, 1f, 1f));
+            yield return WaitSolutionPlaybackDelayOrStop();
+
+            for (int i = solutionPlaybackNextActionIndex; i < totalCount; i++)
+            {
+                if (stageSolved)
+                    break;
+
+                if (solutionPlaybackStopRequested)
+                {
+                    PauseSolutionPlayback(i);
+                    yield break;
+                }
+
+                StageSolutionActionData action = solutionPlaybackActions[i];
+                ApplySolutionPlaybackAction(action);
+
+                while (playerController != null && playerController.IsMoving)
+                    yield return null;
+
+                int completedCount = i + 1;
+                SaveSolutionPlaybackPausePoint(completedCount);
+                ShowAutoSolverStatus($"답안 시뮬레이션 {autoSolverSpeedMultiplier}배속  {completedCount}/{totalCount}", new Color(0.55f, 0.85f, 1f, 1f));
+
+                if (solutionPlaybackStopRequested)
+                {
+                    PauseSolutionPlayback(completedCount);
+                    yield break;
+                }
+
+                yield return WaitSolutionPlaybackDelayOrStop();
+
+                if (solutionPlaybackStopRequested)
+                {
+                    PauseSolutionPlayback(completedCount);
+                    yield break;
+                }
+            }
+
+            if (!stageSolved && laserShooter != null)
+            {
+                ShowAutoSolverStatus($"답안 시뮬레이션 {autoSolverSpeedMultiplier}배속  마지막 레이저 발사", new Color(0.55f, 0.85f, 1f, 1f));
+                laserShooter.ShootFromPlayer();
+                SaveSolutionPlaybackPausePoint(totalCount);
+            }
+
+            FinishSolutionPlayback(stageSolved ? "답안 시뮬레이션 완료" : "답안 시뮬레이션 종료", false);
+        }
+
+        private void ResetStageForSolutionPlayback()
+        {
+            StageData resetSource = autoSolverInitialStageData != null ? autoSolverInitialStageData : currentStage;
+            if (resetSource == null || gridManager == null)
+                return;
+
+            if (laserShooter != null)
+                laserShooter.ClearLaser();
+
+            stageSolved = false;
+            clearHoleActivated = false;
+            isJumpingIntoHole = false;
+
+            if (stageSolvedPresentationRoutine != null)
+            {
+                StopCoroutine(stageSolvedPresentationRoutine);
+                stageSolvedPresentationRoutine = null;
+            }
+
+            gridManager.LoadStage(resetSource.Clone());
+            currentStage = gridManager.CurrentStageData;
+
+            if (playerController != null)
+                playerController.ResetToStageStartImmediate();
+
+            if (turnHistoryController != null)
+            {
+                turnHistoryController.ClearHistory();
+                turnHistoryController.SetTurnCountingEnabled(true);
+            }
+
+            UpdateMoveLimitText();
+        }
+
+        private IEnumerator MovePlayerToSolutionPlaybackPausedPoint()
+        {
+            if (playerController == null)
+                yield break;
+
+            if (laserShooter != null)
+                laserShooter.ClearLaser();
+
+            float duration = Mathf.Max(0f, solutionPlaybackReturnDuration / Mathf.Max(1, autoSolverSpeedMultiplier));
+            yield return playerController.MoveToRuntimeStateRoutine(solutionPlaybackPausedGridPosition, solutionPlaybackPausedFacingDirection, duration);
+        }
+
+        private void ApplySolutionPlaybackAction(StageSolutionActionData action)
+        {
+            ApplyAutoSolverAction(action);
+        }
+
+        private IEnumerator WaitSolutionPlaybackDelayOrStop()
+        {
+            float waitTime = autoSolverSpeedMultiplier <= 0 ? autoSolverActionDelay : autoSolverActionDelay / autoSolverSpeedMultiplier;
+            float elapsed = 0f;
+            while (elapsed < waitTime)
+            {
+                if (solutionPlaybackStopRequested)
+                    yield break;
+
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+        }
+
+        private void SaveSolutionPlaybackPausePoint(int nextActionIndex)
+        {
+            solutionPlaybackNextActionIndex = Mathf.Clamp(nextActionIndex, 0, solutionPlaybackActions.Count);
+
+            if (playerController == null)
+                return;
+
+            solutionPlaybackPausedGridPosition = playerController.GridPosition;
+            solutionPlaybackPausedFacingDirection = playerController.FacingDirection;
+        }
+
+        private void PauseSolutionPlayback(int nextActionIndex)
+        {
+            SaveSolutionPlaybackPausePoint(nextActionIndex);
+            solutionPlaybackPaused = true;
+            isSolutionPlaybackRunning = false;
+            solutionPlaybackStopRequested = false;
+            solutionPlaybackRoutine = null;
+            RestoreInputAfterSolutionPlayback();
+            ShowAutoSolverStatus($"답안 시뮬레이션 정지  {solutionPlaybackNextActionIndex}/{solutionPlaybackActions.Count}  P: 재개", new Color(1f, 0.85f, 0.35f, 1f));
+        }
+
+        private void FinishSolutionPlayback(string message, bool clearPauseState)
+        {
+            isSolutionPlaybackRunning = false;
+            solutionPlaybackStopRequested = false;
+            solutionPlaybackRoutine = null;
+
+            if (clearPauseState)
+                solutionPlaybackPaused = false;
+
+            if (!stageSolved)
+                RestoreInputAfterSolutionPlayback();
+            else if (inputReader != null)
+                inputReader.InputEnabled = previousInputEnabledBeforeSolutionPlayback;
+
+            isRecordingEditorSolution = previousRecordingEnabledBeforeSolutionPlayback;
+            ShowAutoSolverStatus($"{message}  {autoSolverSpeedMultiplier}배속", stageSolved ? new Color(0.55f, 1f, 0.65f, 1f) : new Color(0.55f, 0.85f, 1f, 1f));
+        }
+
+        private void RestoreInputAfterSolutionPlayback()
+        {
+            if (inputReader != null)
+                inputReader.InputEnabled = previousInputEnabledBeforeSolutionPlayback;
+
+            if (playerController != null && !stageSolved && !pauseOpen && !tutorialOpen && !isJumpingIntoHole)
+                playerController.SetControlsEnabled(true);
+
+            isRecordingEditorSolution = previousRecordingEnabledBeforeSolutionPlayback;
+        }
+
+        private void StopSolutionPlaybackRoutine(bool restoreInput)
+        {
+            if (solutionPlaybackRoutine != null)
+            {
+                StopCoroutine(solutionPlaybackRoutine);
+                solutionPlaybackRoutine = null;
+            }
+
+            isSolutionPlaybackRunning = false;
+            solutionPlaybackStopRequested = false;
+
+            if (restoreInput)
+                RestoreInputAfterSolutionPlayback();
         }
 
         private void StartEditorAutoSolver()
@@ -625,7 +969,7 @@ namespace UI.InGame
 
             gridManager.LoadStage(stageData.Clone());
             currentStage = gridManager.CurrentStageData;
-            editorRecordedSolutionActions.Clear();
+            ClearRecordedSolutionTimeline();
             isRecordingEditorSolution = GameSceneRequest.IsEditorTestPlay || GameSceneRequest.IsEditorBatchSolutionProcessing;
 
             if (playerController != null)
@@ -715,7 +1059,88 @@ namespace UI.InGame
             if (!isRecordingEditorSolution || stageSolved || action == null)
                 return;
 
-            editorRecordedSolutionActions.Add(action.Clone());
+            StageSolutionActionData clonedAction = action.Clone();
+
+            if (ShouldCreateUndoSnapshotForRecordedAction(clonedAction))
+            {
+                editorRecordedSolutionUndoSnapshots.Add(CloneSolutionActions(editorRecordedSolutionActions));
+                editorRecordedSolutionRedoSnapshots.Clear();
+            }
+            else
+            {
+                editorRecordedSolutionRedoSnapshots.Clear();
+            }
+
+            editorRecordedSolutionActions.Add(clonedAction);
+        }
+
+        private bool ShouldCreateUndoSnapshotForRecordedAction(StageSolutionActionData action)
+        {
+            if (action == null)
+                return false;
+
+            return action.actionType == StageSolutionActionType.Move
+                || action.actionType == StageSolutionActionType.RotateClockwise
+                || action.actionType == StageSolutionActionType.RotateCounterClockwise;
+        }
+
+        private void HandleRecordedSolutionUndoApplied()
+        {
+            if (!isRecordingEditorSolution)
+                return;
+
+            if (editorRecordedSolutionUndoSnapshots.Count <= 0)
+                return;
+
+            editorRecordedSolutionRedoSnapshots.Add(CloneSolutionActions(editorRecordedSolutionActions));
+
+            int lastIndex = editorRecordedSolutionUndoSnapshots.Count - 1;
+            ReplaceRecordedSolutionActions(editorRecordedSolutionUndoSnapshots[lastIndex]);
+            editorRecordedSolutionUndoSnapshots.RemoveAt(lastIndex);
+        }
+
+        private void HandleRecordedSolutionRedoApplied()
+        {
+            if (!isRecordingEditorSolution)
+                return;
+
+            if (editorRecordedSolutionRedoSnapshots.Count <= 0)
+                return;
+
+            editorRecordedSolutionUndoSnapshots.Add(CloneSolutionActions(editorRecordedSolutionActions));
+
+            int lastIndex = editorRecordedSolutionRedoSnapshots.Count - 1;
+            ReplaceRecordedSolutionActions(editorRecordedSolutionRedoSnapshots[lastIndex]);
+            editorRecordedSolutionRedoSnapshots.RemoveAt(lastIndex);
+        }
+
+        private void HandleRecordedSolutionHistoryCleared()
+        {
+            if (!isRecordingEditorSolution)
+                return;
+
+            ClearRecordedSolutionTimeline();
+        }
+
+        private void ReplaceRecordedSolutionActions(List<StageSolutionActionData> snapshot)
+        {
+            editorRecordedSolutionActions.Clear();
+
+            if (snapshot == null)
+                return;
+
+            for (int i = 0; i < snapshot.Count; i++)
+            {
+                if (snapshot[i] != null)
+                    editorRecordedSolutionActions.Add(snapshot[i].Clone());
+            }
+        }
+
+        private void ClearRecordedSolutionTimeline()
+        {
+            editorRecordedSolutionActions.Clear();
+            editorRecordedSolutionUndoSnapshots.Clear();
+            editorRecordedSolutionRedoSnapshots.Clear();
         }
 
         private void EnsureEventSystem()
@@ -882,6 +1307,9 @@ namespace UI.InGame
 
         public void ResetRuntimeStateAfterStageReset()
         {
+            StopSolutionPlaybackRoutine(true);
+            solutionPlaybackPaused = false;
+            solutionPlaybackActions.Clear();
             StopAutoSolverRoutine(true);
             stageSolved = false;
             isJumpingIntoHole = false;
@@ -912,6 +1340,17 @@ namespace UI.InGame
 
             if (playerController != null)
                 playerController.SetControlsEnabled(true);
+
+            RestartEditorSolutionRecordingAfterStageReset();
+        }
+
+        private void RestartEditorSolutionRecordingAfterStageReset()
+        {
+            if (!GameSceneRequest.IsEditorTestPlay && !GameSceneRequest.IsEditorBatchSolutionProcessing)
+                return;
+
+            ClearRecordedSolutionTimeline();
+            isRecordingEditorSolution = true;
         }
 
         private void HandleStageSolved()
@@ -923,6 +1362,8 @@ namespace UI.InGame
             clearHoleActivated = false;
             if (!isAutoSolverRunning)
                 StopAutoSolverRoutine(true);
+            if (!isSolutionPlaybackRunning)
+                StopSolutionPlaybackRoutine(true);
             isRecordingEditorSolution = false;
 
             if (turnHistoryController != null)

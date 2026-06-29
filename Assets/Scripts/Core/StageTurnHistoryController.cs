@@ -42,6 +42,9 @@ namespace Core
         private bool turnCountingEnabled = true;
 
         public event Action TurnCountChanged;
+        public event Action UndoApplied;
+        public event Action RedoApplied;
+        public event Action HistoryCleared;
 
         public bool IsApplyingHistory => isApplyingHistory;
         public bool IsTurnCountingEnabled => turnCountingEnabled;
@@ -153,6 +156,7 @@ namespace Core
 
             ApplySnapshot(targetSnapshot);
             TurnCountChanged?.Invoke();
+            UndoApplied?.Invoke();
         }
 
         public void RedoTurn()
@@ -175,6 +179,7 @@ namespace Core
 
             ApplySnapshot(targetSnapshot);
             TurnCountChanged?.Invoke();
+            RedoApplied?.Invoke();
         }
 
         public void ClearHistory()
@@ -184,6 +189,7 @@ namespace Core
             pendingSnapshot = null;
             hasPendingSnapshot = false;
             TurnCountChanged?.Invoke();
+            HistoryCleared?.Invoke();
         }
 
         private StageTurnSnapshot CaptureSnapshot()
