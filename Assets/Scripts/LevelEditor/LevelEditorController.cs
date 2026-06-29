@@ -204,6 +204,8 @@ namespace LevelEditor
             PlayEditorBgmByIndex(editorBgmIndex, false);
             CreateToolDefinitions();
             BuildUI();
+            ApplyLetterboxToSceneCanvases();
+            ApplyGlobalScrollSensitivity();
 
             bool restoredFromTest = TryRestoreEditorStageAfterTest();
             if (!restoredFromTest)
@@ -215,6 +217,35 @@ namespace LevelEditor
             HandleReturnedBatchSolutionResult();
 
             StartCoroutine(EditorTutorialRoutine());
+        }
+
+        private void ApplyGlobalScrollSensitivity()
+        {
+            ScrollRect[] scrollRects = FindObjectsByType<ScrollRect>(FindObjectsSortMode.None);
+            for (int i = 0; i < scrollRects.Length; i++)
+            {
+                if (scrollRects[i] != null)
+                    scrollRects[i].scrollSensitivity = 8f;
+            }
+        }
+
+        private void ApplyLetterboxToSceneCanvases()
+        {
+            Canvas[] sceneCanvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+            for (int i = 0; i < sceneCanvases.Length; i++)
+            {
+                Canvas sceneCanvas = sceneCanvases[i];
+                if (sceneCanvas == null || sceneCanvas == canvas)
+                    continue;
+
+                if (sceneCanvas.renderMode == RenderMode.WorldSpace)
+                    continue;
+
+                if (sceneCanvas.GetComponent<SceneFadeController>() != null)
+                    continue;
+
+                global::UI.LetterboxSafeFrame.Install(sceneCanvas, true, "SceneSafeFrame_16_9");
+            }
         }
 
         private void Update()
@@ -738,7 +769,16 @@ namespace LevelEditor
             canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             canvasObject.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1920f, 1080f);
             canvasObject.AddComponent<GraphicRaycaster>();
-            canvasRect = canvasObject.GetComponent<RectTransform>();
+            RectTransform canvasRoot = canvasObject.GetComponent<RectTransform>();
+            canvasRect = canvasRoot;
+
+            RectTransform safeFrame = CreateUIObject("LevelEditorSafeFrame_16_9", canvasRect);
+            RectTransform topBar = CreatePanel("LetterboxTop", canvasRect, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform bottomBar = CreatePanel("LetterboxBottom", canvasRect, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform leftBar = CreatePanel("LetterboxLeft", canvasRect, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform rightBar = CreatePanel("LetterboxRight", canvasRect, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            canvasObject.AddComponent<global::UI.LetterboxSafeFrame>().Initialize(safeFrame, topBar, bottomBar, leftBar, rightBar);
+            canvasRect = safeFrame;
 
             BuildRuntimeSettingsPanel();
             BuildLeftPanel();
@@ -3948,6 +3988,7 @@ namespace LevelEditor
             ScrollRect scrollRect = template.gameObject.AddComponent<ScrollRect>();
             scrollRect.horizontal = false;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.scrollSensitivity = 8f;
 
             RectTransform viewport = CreateUIObject("Viewport", template);
             viewport.anchorMin = Vector2.zero;
@@ -4073,6 +4114,7 @@ namespace LevelEditor
             scroll.viewport = viewport;
             scroll.content = content;
             scroll.horizontal = false;
+            scroll.scrollSensitivity = 8f;
             LayoutElement rootLayout = root.gameObject.AddComponent<LayoutElement>();
             rootLayout.flexibleHeight = 1f;
             return scroll;

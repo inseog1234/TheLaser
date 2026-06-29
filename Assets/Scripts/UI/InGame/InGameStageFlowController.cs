@@ -74,6 +74,9 @@ namespace UI.InGame
         private readonly List<StageSolutionActionData> editorRecordedSolutionActions = new();
         private readonly List<List<StageSolutionActionData>> editorRecordedSolutionUndoSnapshots = new();
         private readonly List<List<StageSolutionActionData>> editorRecordedSolutionRedoSnapshots = new();
+        private readonly List<Vector2Int> dragNumberPositions = new();
+        private readonly List<TextMeshPro> dragNumberTexts = new();
+        private Transform dragNumberRoot;
         private StageData autoSolverInitialStageData;
         private TMP_Text autoSolverStatusText;
         private Coroutine autoSolverRoutine;
@@ -100,6 +103,7 @@ namespace UI.InGame
         private int tutorialPageIndex;
         private int lastPauseInputFrame = -1;
         private int lastInteractInputFrame = -1;
+        private bool isTileDragNumberActive;
 
         private void Awake()
         {
@@ -108,6 +112,37 @@ namespace UI.InGame
             font = Resources.Load<TMP_FontAsset>("Font/TMP/PF스타더스트 3");
             whiteSprite = CreateWhiteSprite();
             BuildUI();
+            ApplyLetterboxToSceneCanvases();
+            ApplyGlobalScrollSensitivity();
+        }
+
+        private void ApplyGlobalScrollSensitivity()
+        {
+            ScrollRect[] scrollRects = FindObjectsByType<ScrollRect>(FindObjectsSortMode.None);
+            for (int i = 0; i < scrollRects.Length; i++)
+            {
+                if (scrollRects[i] != null)
+                    scrollRects[i].scrollSensitivity = 8f;
+            }
+        }
+
+        private void ApplyLetterboxToSceneCanvases()
+        {
+            Canvas[] sceneCanvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+            for (int i = 0; i < sceneCanvases.Length; i++)
+            {
+                Canvas sceneCanvas = sceneCanvases[i];
+                if (sceneCanvas == null || sceneCanvas == canvas)
+                    continue;
+
+                if (sceneCanvas.renderMode == RenderMode.WorldSpace)
+                    continue;
+
+                if (sceneCanvas.GetComponent<SceneFadeController>() != null)
+                    continue;
+
+                global::UI.LetterboxSafeFrame.Install(sceneCanvas, true, "SceneSafeFrame_16_9");
+            }
         }
 
         private IEnumerator Start()
@@ -172,6 +207,8 @@ namespace UI.InGame
 
         private void OnDestroy()
         {
+            ClearTileDragNumbers();
+
             if (gridManager != null)
                 gridManager.StageSolved -= HandleStageSolved;
 
@@ -205,6 +242,7 @@ namespace UI.InGame
                 HandleInteractPressed();
 
             HandleEditorAutoSolverHotkeys();
+            HandleTileDragNumbers();
 
             UpdateHoleInteractIcon();
             UpdateMoveLimitText();
@@ -341,6 +379,102 @@ namespace UI.InGame
             }
 
             StartSolutionPlaybackFromBeginning();
+        }
+
+        private void HandleTileDragNumbers()
+        {
+            Mouse mouse = Mouse.current;
+            if (mouse == null || gridManager == null || Camera.main == null)
+                return;
+
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                if (IsPointerOverUI())
+                    return;
+
+                if (TryGetMouseGridPosition(out Vector2Int gridPosition))
+                {
+                    isTileDragNumberActive = true;
+                    ClearTileDragNumbers();
+                    AddTileDragNumber(gridPosition);
+                }
+            }
+
+            if (isTileDragNumberActive && mouse.leftButton.isPressed)
+            {
+                if (TryGetMouseGridPosition(out Vector2Int gridPosition))
+                    AddTileDragNumber(gridPosition);
+            }
+
+            if (isTileDragNumberActive && mouse.leftButton.wasReleasedThisFrame)
+            {
+                isTileDragNumberActive = false;
+                StartCoroutine(ClearTileDragNumbersAfterDelay(0.45f));
+            }
+        }
+
+        private bool TryGetMouseGridPosition(out Vector2Int gridPosition)
+        {
+            gridPosition = Vector2Int.zero;
+            if (Mouse.current == null || gridManager == null || Camera.main == null)
+                return false;
+
+            Vector2 screenPosition = Mouse.current.position.ReadValue();
+            Vector3 worldPosition = Camera.main.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, Mathf.Abs(Camera.main.transform.position.z)));
+            gridPosition = gridManager.WorldToGrid(worldPosition);
+            return gridManager.IsInside(gridPosition);
+        }
+
+        private bool IsPointerOverUI()
+        {
+            return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        }
+
+        private void AddTileDragNumber(Vector2Int gridPosition)
+        {
+            if (dragNumberPositions.Contains(gridPosition))
+                return;
+
+            dragNumberPositions.Add(gridPosition);
+
+            if (dragNumberRoot == null)
+                dragNumberRoot = new GameObject("TileDragNumbers").transform;
+
+            GameObject obj = new GameObject($"TileDragNumber_{dragNumberPositions.Count}");
+            obj.transform.SetParent(dragNumberRoot, false);
+            obj.transform.position = gridManager.GridToWorld(gridPosition) + Vector3.back * 0.1f;
+
+            TextMeshPro tmp = obj.AddComponent<TextMeshPro>();
+            tmp.font = font;
+            tmp.text = dragNumberPositions.Count.ToString();
+            tmp.fontSize = 5.2f;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = new Color(1f, 0.95f, 0.25f, 1f);
+            tmp.enableWordWrapping = false;
+            MeshRenderer textRenderer = tmp.GetComponent<MeshRenderer>();
+            if (textRenderer != null)
+                textRenderer.sortingOrder = 500;
+            dragNumberTexts.Add(tmp);
+        }
+
+        private IEnumerator ClearTileDragNumbersAfterDelay(float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (!isTileDragNumberActive)
+                ClearTileDragNumbers();
+        }
+
+        private void ClearTileDragNumbers()
+        {
+            dragNumberPositions.Clear();
+
+            for (int i = 0; i < dragNumberTexts.Count; i++)
+            {
+                if (dragNumberTexts[i] != null)
+                    Destroy(dragNumberTexts[i].gameObject);
+            }
+
+            dragNumberTexts.Clear();
         }
 
         private void ToggleEditorTestAutoSolver()
@@ -1207,7 +1341,16 @@ namespace UI.InGame
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             canvasObject.AddComponent<GraphicRaycaster>();
-            root = canvasObject.GetComponent<RectTransform>();
+            RectTransform canvasRoot = canvasObject.GetComponent<RectTransform>();
+            root = canvasRoot;
+
+            RectTransform safeFrame = CreateUIObject("InGameSafeFrame_16_9", root);
+            RectTransform topBar = CreatePanel("LetterboxTop", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform bottomBar = CreatePanel("LetterboxBottom", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform leftBar = CreatePanel("LetterboxLeft", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform rightBar = CreatePanel("LetterboxRight", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            canvasObject.AddComponent<global::UI.LetterboxSafeFrame>().Initialize(safeFrame, topBar, bottomBar, leftBar, rightBar);
+            root = safeFrame;
 
             RectTransform intro = CreatePanel("StageIntro", root, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-260f, -149f), new Vector2(260f, -61f), new Color(0f, 0f, 0f, 0.55f));
             AddVertical(intro, 8, 8, 8, 8, 2);
@@ -1349,6 +1492,8 @@ namespace UI.InGame
             solutionPlaybackPaused = false;
             solutionPlaybackActions.Clear();
             StopAutoSolverRoutine(true);
+            ClearTileDragNumbers();
+            isTileDragNumberActive = false;
             stageSolved = false;
             isJumpingIntoHole = false;
             clearHoleActivated = false;
@@ -1397,6 +1542,8 @@ namespace UI.InGame
                 return;
 
             stageSolved = true;
+            ClearTileDragNumbers();
+            isTileDragNumberActive = false;
             clearHoleActivated = false;
             if (!isAutoSolverRunning)
                 StopAutoSolverRoutine(true);

@@ -2772,10 +2772,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.CanvasScaler
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
@@ -3481,6 +3481,7 @@ MonoBehaviour:
     distanceSensors: []
     transformZones: []
     objects: []
+    solutionActions: []
   loadOnAwake: 1
   loadStageFromBinaryOnAwake: 0
   useBuiltInLevelsDirectory: 1
@@ -5466,6 +5467,16 @@ MonoBehaviour:
   stageSolvedShakeDuration: 0.18
   stageSolvedShakeStrength: 0.24
   stageSolvedShakeFrequency: 55
+  enableEditorAutoSolver: 1
+  autoSolverActionDelay: 0.3
+  autoSolverMaxNodeCount: 120000
+  autoSolverMaxActionCount: 80
+  autoSolverFastApproximateSearch: 1
+  autoSolverSearchMode: 0
+  autoSolverHeuristicWeight: 3
+  autoSolverBeamWidth: 1024
+  enableSolutionPlaybackCheat: 1
+  solutionPlaybackReturnDuration: 0.18
 --- !u!4 &2045987776
 Transform:
   m_ObjectHideFlags: 0

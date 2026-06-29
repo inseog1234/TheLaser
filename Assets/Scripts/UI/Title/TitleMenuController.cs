@@ -68,6 +68,37 @@ namespace UI.Title
             audioController.ApplySavedVolumes();
             audioController.PlayBgm(FmodRuntimeAudio.BgmTitle);
             BuildUI();
+            ApplyLetterboxToSceneCanvases();
+            ApplyGlobalScrollSensitivity();
+        }
+
+        private void ApplyGlobalScrollSensitivity()
+        {
+            ScrollRect[] scrollRects = FindObjectsByType<ScrollRect>(FindObjectsSortMode.None);
+            for (int i = 0; i < scrollRects.Length; i++)
+            {
+                if (scrollRects[i] != null)
+                    scrollRects[i].scrollSensitivity = 8f;
+            }
+        }
+
+        private void ApplyLetterboxToSceneCanvases()
+        {
+            Canvas[] sceneCanvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+            for (int i = 0; i < sceneCanvases.Length; i++)
+            {
+                Canvas sceneCanvas = sceneCanvases[i];
+                if (sceneCanvas == null || sceneCanvas == canvas)
+                    continue;
+
+                if (sceneCanvas.renderMode == RenderMode.WorldSpace)
+                    continue;
+
+                if (sceneCanvas.GetComponent<SceneFadeController>() != null)
+                    continue;
+
+                global::UI.LetterboxSafeFrame.Install(sceneCanvas, true, "SceneSafeFrame_16_9");
+            }
         }
 
         private void EnsureEventSystem()
@@ -99,18 +130,22 @@ namespace UI.Title
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             canvasObject.AddComponent<GraphicRaycaster>();
-            root = canvasObject.GetComponent<RectTransform>();
+            RectTransform canvasRoot = canvasObject.GetComponent<RectTransform>();
+            root = canvasRoot;
 
-            Image background = CreatePanel("Background", root, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(0.035f, 0.04f, 0.06f, 1f)).GetComponent<Image>();
+            RectTransform safeFrame = CreateUIObject("TitleSafeFrame_16_9", root);
+            RectTransform topBar = CreatePanel("LetterboxTop", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform bottomBar = CreatePanel("LetterboxBottom", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform leftBar = CreatePanel("LetterboxLeft", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            RectTransform rightBar = CreatePanel("LetterboxRight", root, Vector2.zero, Vector2.zero, Vector2.zero, Vector2.zero, Color.black);
+            canvasObject.AddComponent<global::UI.LetterboxSafeFrame>().Initialize(safeFrame, topBar, bottomBar, leftBar, rightBar);
+            root = safeFrame;
+
+            Image background = CreatePanel("Background", root, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, new Color(0.006f, 0.008f, 0.012f, 1f)).GetComponent<Image>();
             background.raycastTarget = false;
 
-            RectTransform menu = CreatePanel("MainMenu", root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(-230f, -270f), new Vector2(230f, 270f), new Color(0.08f, 0.09f, 0.13f, 0.92f));
-            AddVertical(menu, 24, 24, 28, 28, 16);
-            AddText(menu, "THE LASER", 54, TextAlignmentOptions.Center, Color.white, true);
-            AddButton(menu, "게임 시작", ShowStagePopup, 380f, 58f);
-            AddButton(menu, "커스텀", ShowCustomPopup, 380f, 58f);
-            AddButton(menu, "설정", ShowSettingsPopup, 380f, 58f);
-            AddButton(menu, "게임 끝내기", QuitGame, 380f, 58f);
+            BuildMainTitleHeader();
+            BuildMainTitleMenu();
 
             BuildStagePopup();
             BuildCustomPopup();
@@ -121,6 +156,45 @@ namespace UI.Title
             BuildSettingsPopup();
             BuildTitleOnlineNotice();
             HideAllPopups(false);
+        }
+
+        private void BuildMainTitleHeader()
+        {
+            RectTransform header = CreateUIObject("MainTitleHeader", root);
+            header.anchorMin = new Vector2(0.5f, 1f);
+            header.anchorMax = new Vector2(0.5f, 1f);
+            header.pivot = new Vector2(0.5f, 1f);
+            header.anchoredPosition = new Vector2(0f, -150f);
+            header.sizeDelta = new Vector2(560f, 120f);
+
+            Color white = new Color(0.94f, 0.95f, 0.98f, 1f);
+            CreateDecorImage("LeftDiamond", header, new Vector2(-210f, -18f), new Vector2(28f, 28f), white, 45f);
+            CreateDecorImage("RightDiamond", header, new Vector2(210f, -18f), new Vector2(28f, 28f), white, 45f);
+            CreateDecorImage("LeftLineA", header, new Vector2(-162f, -18f), new Vector2(42f, 7f), white, 0f);
+            CreateDecorImage("LeftLineB", header, new Vector2(-111f, -18f), new Vector2(42f, 7f), white, 0f);
+            CreateDecorImage("RightLineA", header, new Vector2(111f, -18f), new Vector2(42f, 7f), white, 0f);
+            CreateDecorImage("RightLineB", header, new Vector2(162f, -18f), new Vector2(42f, 7f), white, 0f);
+
+            CreateAnchoredText(header, "루멘", 52, TextAlignmentOptions.Center, white, new Vector2(0f, -18f), new Vector2(180f, 66f), false);
+            CreateAnchoredText(header, "-빛이 사라진 뒤, 길은 남는다-", 24, TextAlignmentOptions.Center, white, new Vector2(0f, -75f), new Vector2(560f, 42f), false);
+        }
+
+        private void BuildMainTitleMenu()
+        {
+            RectTransform menu = CreateUIObject("MainMenu", root);
+            menu.anchorMin = new Vector2(0.5f, 0.5f);
+            menu.anchorMax = new Vector2(0.5f, 0.5f);
+            menu.pivot = new Vector2(0.5f, 0.5f);
+            menu.anchoredPosition = new Vector2(0f, -118f);
+            menu.sizeDelta = new Vector2(360f, 380f);
+
+            VerticalLayoutGroup layout = AddVertical(menu, 0, 0, 0, 0, 28);
+            layout.childForceExpandHeight = false;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            AddTitleMenuButton(menu, "게임 시작", ShowStagePopup, false);
+            AddTitleMenuButton(menu, "커스텀", ShowCustomPopup, false);
+            AddTitleMenuButton(menu, "설정", ShowSettingsPopup, false);
+            AddTitleMenuButton(menu, "끝내기", QuitGame, true);
         }
 
         private void BuildStagePopup()
@@ -847,6 +921,7 @@ namespace UI.Title
             viewport.gameObject.AddComponent<Mask>().showMaskGraphic = false;
             ScrollRect scroll = viewport.gameObject.AddComponent<ScrollRect>();
             scroll.horizontal = false;
+            scroll.scrollSensitivity = 8f;
             content = CreateUIObject("Content", viewport);
             content.anchorMin = new Vector2(0f, 1f);
             content.anchorMax = new Vector2(1f, 1f);
@@ -872,6 +947,44 @@ namespace UI.Title
             image.sprite = whiteSprite;
             image.color = color;
             return rect;
+        }
+
+        private Image CreateDecorImage(string name, RectTransform parent, Vector2 anchoredPosition, Vector2 size, Color color, float rotationZ)
+        {
+            RectTransform rect = CreateUIObject(name, parent);
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+            rect.localRotation = Quaternion.Euler(0f, 0f, rotationZ);
+
+            Image image = rect.gameObject.AddComponent<Image>();
+            image.sprite = whiteSprite;
+            image.color = color;
+            image.raycastTarget = false;
+            return image;
+        }
+
+        private TMP_Text CreateAnchoredText(RectTransform parent, string text, int size, TextAlignmentOptions alignment, Color color, Vector2 anchoredPosition, Vector2 rectSize, bool wrap)
+        {
+            RectTransform rect = CreateUIObject("Text", parent);
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = rectSize;
+
+            TMP_Text tmp = rect.gameObject.AddComponent<TextMeshProUGUI>();
+            tmp.font = font;
+            tmp.text = text;
+            tmp.fontSize = size;
+            tmp.alignment = alignment;
+            tmp.color = color;
+            tmp.enableWordWrapping = wrap;
+            tmp.overflowMode = wrap ? TextOverflowModes.Overflow : TextOverflowModes.Ellipsis;
+            tmp.raycastTarget = false;
+            return tmp;
         }
 
         private RectTransform CreateUIObject(string name, Transform parent)
@@ -932,6 +1045,41 @@ namespace UI.Title
             rect.GetChild(0).GetComponent<RectTransform>().anchorMax = Vector2.one;
             rect.GetChild(0).GetComponent<RectTransform>().offsetMin = Vector2.zero;
             rect.GetChild(0).GetComponent<RectTransform>().offsetMax = Vector2.zero;
+            return button;
+        }
+
+        private Button AddTitleMenuButton(RectTransform parent, string label, UnityEngine.Events.UnityAction onClick, bool danger)
+        {
+            RectTransform rect = CreateUIObject("TitleMenuButton", parent);
+            LayoutElement layout = rect.gameObject.AddComponent<LayoutElement>();
+            layout.preferredWidth = 360f;
+            layout.preferredHeight = 66f;
+
+            Image hitArea = rect.gameObject.AddComponent<Image>();
+            hitArea.sprite = whiteSprite;
+            hitArea.color = new Color(1f, 1f, 1f, 0f);
+
+            Button button = rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = hitArea;
+            ColorBlock colors = button.colors;
+            colors.normalColor = new Color(1f, 1f, 1f, 0f);
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.08f);
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.14f);
+            colors.selectedColor = new Color(1f, 1f, 1f, 0.08f);
+            colors.disabledColor = new Color(1f, 1f, 1f, 0f);
+            button.colors = colors;
+            button.onClick.AddListener(() =>
+            {
+                PlayUiClick();
+                onClick?.Invoke();
+            });
+
+            TMP_Text labelText = CreateAnchoredText(rect, label, 44, TextAlignmentOptions.Center, danger ? new Color(1f, 0.05f, 0.05f, 1f) : new Color(0.94f, 0.95f, 0.98f, 1f), Vector2.zero, new Vector2(360f, 66f), false);
+            labelText.rectTransform.anchorMin = Vector2.zero;
+            labelText.rectTransform.anchorMax = Vector2.one;
+            labelText.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+            labelText.rectTransform.anchoredPosition = Vector2.zero;
+            labelText.rectTransform.sizeDelta = Vector2.zero;
             return button;
         }
 

@@ -20,6 +20,12 @@ namespace Player
 
         [Header("Option")]
         [SerializeField] private bool inputEnabled = true;
+        [SerializeField] private float heldMoveInitialDelay = 0.18f;
+        [SerializeField] private float heldMoveRepeatInterval = 0.11f;
+
+        private GridDirection heldMoveDirection;
+        private bool hasHeldMoveDirection;
+        private float nextHeldMoveTime;
 
         public event Action<GridDirection> MovePressed;
         public event Action LaserPressed;
@@ -47,6 +53,45 @@ namespace Player
         {
             SetInputActionsEnabled(false);
             UnsubscribeInputActions();
+        }
+
+        private void Update()
+        {
+            if (!inputEnabled)
+            {
+                hasHeldMoveDirection = false;
+                return;
+            }
+
+            HandleHeldMoveInput();
+        }
+
+        private void HandleHeldMoveInput()
+        {
+            if (moveAction == null || moveAction.action == null)
+                return;
+
+            Vector2 input = moveAction.action.ReadValue<Vector2>();
+            if (input == Vector2.zero)
+            {
+                hasHeldMoveDirection = false;
+                return;
+            }
+
+            GridDirection direction = ConvertVectorToGridDirection(input);
+            if (!hasHeldMoveDirection || direction != heldMoveDirection)
+            {
+                heldMoveDirection = direction;
+                hasHeldMoveDirection = true;
+                nextHeldMoveTime = Time.unscaledTime + Mathf.Max(0f, heldMoveInitialDelay);
+                return;
+            }
+
+            if (Time.unscaledTime < nextHeldMoveTime)
+                return;
+
+            nextHeldMoveTime = Time.unscaledTime + Mathf.Max(0.02f, heldMoveRepeatInterval);
+            MovePressed?.Invoke(direction);
         }
 
         private void SubscribeInputActions()
@@ -144,6 +189,9 @@ namespace Player
                 return;
 
             GridDirection direction = ConvertVectorToGridDirection(input);
+            heldMoveDirection = direction;
+            hasHeldMoveDirection = true;
+            nextHeldMoveTime = Time.unscaledTime + Mathf.Max(0f, heldMoveInitialDelay);
             MovePressed?.Invoke(direction);
         }
 
