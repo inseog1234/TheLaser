@@ -286,7 +286,21 @@ namespace UI.InGame
                 SetAutoSolverSpeed(3);
 
             if (Keyboard.current.pKey.wasPressedThisFrame)
-                ToggleSolutionPlaybackCheat();
+                HandlePHotkey();
+        }
+
+        private void HandlePHotkey()
+        {
+            if (GameSceneRequest.IsEditorBatchSolutionProcessing)
+                return;
+
+            if (GameSceneRequest.IsEditorTestPlay)
+            {
+                ToggleEditorTestAutoSolver();
+                return;
+            }
+
+            ToggleSolutionPlaybackCheat();
         }
 
         private void SetAutoSolverSpeed(int multiplier)
@@ -308,7 +322,7 @@ namespace UI.InGame
             if (!enableSolutionPlaybackCheat)
                 return;
 
-            if (GameSceneRequest.IsEditorBatchSolutionProcessing)
+            if (GameSceneRequest.IsEditorTestPlay || GameSceneRequest.IsEditorBatchSolutionProcessing)
                 return;
 
             if (pauseOpen || tutorialOpen || isJumpingIntoHole)
@@ -327,6 +341,30 @@ namespace UI.InGame
             }
 
             StartSolutionPlaybackFromBeginning();
+        }
+
+        private void ToggleEditorTestAutoSolver()
+        {
+            if (!enableEditorAutoSolver)
+                return;
+
+            if (pauseOpen || tutorialOpen || isJumpingIntoHole)
+                return;
+
+            if (isAutoSolverRunning)
+            {
+                StopAutoSolverRoutine(true);
+                ShowAutoSolverStatus($"AI 자동 탐색 정지  {autoSolverSpeedMultiplier}배속  P: 다시 시작", new Color(1f, 0.85f, 0.35f, 1f));
+                return;
+            }
+
+            if (isSolutionPlaybackRunning || solutionPlaybackPaused)
+            {
+                StopSolutionPlaybackRoutine(true);
+                solutionPlaybackPaused = false;
+            }
+
+            StartEditorAutoSolver();
         }
 
         private void StartSolutionPlaybackFromBeginning()
