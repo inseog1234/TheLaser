@@ -9,17 +9,22 @@ namespace Laser
         public readonly Vector2Int Position;
         public readonly LaserDirection Direction;
         public readonly LaserColorKind Color;
+        public readonly int RemainingDistance;
 
-        public LaserBeamState(Vector2Int position, LaserDirection direction, LaserColorKind color)
+        public LaserBeamState(Vector2Int position, LaserDirection direction, LaserColorKind color, int remainingDistance = -1)
         {
             Position = position;
             Direction = direction;
             Color = color;
+            RemainingDistance = remainingDistance;
         }
 
         public bool Equals(LaserBeamState other)
         {
-            return Position == other.Position && Direction == other.Direction && Color == other.Color;
+            return Position == other.Position &&
+                   Direction == other.Direction &&
+                   Color == other.Color &&
+                   RemainingDistance == other.RemainingDistance;
         }
 
         public override bool Equals(object obj)
@@ -34,6 +39,7 @@ namespace Laser
                 int hash = Position.GetHashCode();
                 hash = (hash * 397) ^ (int)Direction;
                 hash = (hash * 397) ^ (int)Color;
+                hash = (hash * 397) ^ RemainingDistance;
                 return hash;
             }
         }

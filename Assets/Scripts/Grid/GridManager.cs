@@ -19,6 +19,7 @@ namespace Grid
         [SerializeField] private string customStageFilePath;
 
         private string currentStageFilePath;
+        private StageData originalStageData;
         private bool stageCompletionLocked;
         private bool clearHoleActive;
         private Vector2Int clearHolePosition;
@@ -71,6 +72,7 @@ namespace Grid
         private GameObject spawnedClearHoleObject;
 
         public StageData CurrentStageData => stageData;
+        public StageData OriginalStageData => originalStageData;
         public int Width => stageData != null ? stageData.width : 0;
         public int Height => stageData != null ? stageData.height : 0;
         public float CellSize => cellSize;
@@ -139,7 +141,26 @@ namespace Grid
             if (targetStageData == null)
                 return;
 
-            stageData = targetStageData;
+            originalStageData = targetStageData.Clone();
+            NormalizeSequenceTargets(originalStageData);
+            stageData = originalStageData.Clone();
+            RebuildRuntimeStage();
+        }
+
+        public void ResetRuntimeToOriginalStage()
+        {
+            if (originalStageData == null)
+                return;
+
+            stageData = originalStageData.Clone();
+            RebuildRuntimeStage();
+        }
+
+        private void RebuildRuntimeStage()
+        {
+            if (stageData == null)
+                return;
+
             NormalizeSequenceTargets(stageData);
             stageCompletionLocked = false;
             clearHoleActive = false;
@@ -1178,6 +1199,93 @@ namespace Grid
                 if (spawnedDistanceSensors[i] != null)
                     spawnedDistanceSensors[i].SetActivated(false);
             }
+        }
+
+        public int GetActivatedTargetCount()
+        {
+            int count = 0;
+
+            for (int i = 0; i < spawnedTargets.Count; i++)
+            {
+                if (spawnedTargets[i] != null && spawnedTargets[i].IsActivated)
+                    count++;
+            }
+
+            return count;
+        }
+
+        public int GetTotalTargetCount()
+        {
+            return spawnedTargets.Count;
+        }
+
+        public string BuildDebugGridAscii(Vector2Int? playerPosition = null)
+        {
+            if (stageData == null)
+                return string.Empty;
+
+            System.Text.StringBuilder builder = new System.Text.StringBuilder();
+
+            for (int y = stageData.height - 1; y >= 0; y--)
+            {
+                for (int x = 0; x < stageData.width; x++)
+                {
+                    Vector2Int position = new Vector2Int(x, y);
+
+                    if (playerPosition.HasValue && playerPosition.Value == position)
+                    {
+                        builder.Append('@');
+                        continue;
+                    }
+
+                    if (HasWall(position))
+                    {
+                        builder.Append('#');
+                        continue;
+                    }
+
+                    GridObject obj = GetObjectAt(position);
+                    if (obj != null)
+                    {
+                        builder.Append(GetDebugObjectSymbol(obj));
+                        continue;
+                    }
+
+                    if (HasTarget(position))
+                    {
+                        GridTarget target = GetTargetAt(position);
+                        builder.Append(target != null && target.IsActivated ? 't' : 'T');
+                        continue;
+                    }
+
+                    if (clearHoleActive && position == clearHolePosition)
+                    {
+                        builder.Append('O');
+                        continue;
+                    }
+
+                    builder.Append('.');
+                }
+
+                if (y > 0)
+                    builder.AppendLine();
+            }
+
+            return builder.ToString();
+        }
+
+        private char GetDebugObjectSymbol(GridObject obj)
+        {
+            if (obj == null)
+                return '?';
+
+            return obj.ObjectType switch
+            {
+                PuzzleObjectType.Mirror => 'M',
+                PuzzleObjectType.Prism => 'P',
+                PuzzleObjectType.Lens => 'A',
+                _ => '?'
+            };
         }
 
         public bool AreAllTargetsActivated()

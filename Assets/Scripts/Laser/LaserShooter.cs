@@ -23,6 +23,7 @@ namespace Laser
         [SerializeField] private string unlimitedText = "레이저 잔여 칸 : 제한 없음";
 
         public event Action LaserFiredFromPlayer;
+        public LaserResult LastResult { get; private set; }
 
         private void Awake()
         {
@@ -79,6 +80,7 @@ namespace Laser
                 laserRenderer.Clear();
 
             LaserResult result = laserSimulator.Simulate(startPosition, startDirection);
+            LastResult = result;
 
             if (gridManager != null)
                 gridManager.EvaluateLaserResult(result);
@@ -103,6 +105,8 @@ namespace Laser
 
         public void ClearLaser()
         {
+            LastResult = null;
+
             if (laserRenderer != null)
                 laserRenderer.Clear();
 

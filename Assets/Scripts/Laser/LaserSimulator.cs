@@ -157,7 +157,7 @@ namespace Laser
             result.RegisterBeamStartStepCount(beam.BeamId, beam.StartStepCount);
             result.AddNode(LaserPathNode.Start(currentPosition, currentDirection, currentColor, beam.BeamId));
 
-            visitedStates.Add(new LaserBeamState(currentPosition, currentDirection, currentColor));
+            visitedStates.Add(CreateBeamState(currentPosition, currentDirection, currentColor, remainingDistance));
 
             for (int step = 0; step < maxStepCountPerBeam; step++)
             {
@@ -196,7 +196,7 @@ namespace Laser
                 if (runtimeUseDistanceLimit)
                     remainingDistance--;
 
-                LaserBeamState nextState = new LaserBeamState(nextPosition, currentDirection, currentColor);
+                LaserBeamState nextState = CreateBeamState(nextPosition, currentDirection, currentColor, remainingDistance);
 
                 if (visitedStates.Contains(nextState))
                 {
@@ -383,6 +383,11 @@ namespace Laser
             AddEndNode(result, currentPosition, currentDirection, currentColor, currentBeamId);
             result.SetHitObjectAndStopped(prismPosition);
             return true;
+        }
+
+        private LaserBeamState CreateBeamState(Vector2Int position, LaserDirection direction, LaserColorKind color, int remainingDistance)
+        {
+            return new LaserBeamState(position, direction, color, runtimeUseDistanceLimit ? remainingDistance : -1);
         }
 
         private void AddSegment(LaserResult result, Vector2Int start, Vector2Int end, LaserColorKind color, int beamId)

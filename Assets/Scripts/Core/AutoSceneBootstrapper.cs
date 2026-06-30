@@ -26,8 +26,14 @@ namespace Core
             if (sceneName.Contains("title") && Object.FindFirstObjectByType<TitleMenuController>() == null)
                 new GameObject("TitleMenuController").AddComponent<TitleMenuController>();
 
-            if ((sceneName.Contains("main") || sceneName.Contains("game")) && Object.FindFirstObjectByType<InGameStageFlowController>() == null)
-                new GameObject("InGameStageFlowController").AddComponent<InGameStageFlowController>();
+            if (sceneName.Contains("main") || sceneName.Contains("game"))
+            {
+                if (Object.FindFirstObjectByType<InGameStageFlowController>() == null)
+                    new GameObject("InGameStageFlowController").AddComponent<InGameStageFlowController>();
+
+                if (Object.FindFirstObjectByType<RuntimeDebugOverlay>() == null)
+                    new GameObject("RuntimeDebugOverlay").AddComponent<RuntimeDebugOverlay>();
+            }
         }
     }
 }

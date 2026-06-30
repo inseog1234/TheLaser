@@ -74,9 +74,6 @@ namespace UI.InGame
         private readonly List<StageSolutionActionData> editorRecordedSolutionActions = new();
         private readonly List<List<StageSolutionActionData>> editorRecordedSolutionUndoSnapshots = new();
         private readonly List<List<StageSolutionActionData>> editorRecordedSolutionRedoSnapshots = new();
-        private readonly List<Vector2Int> dragNumberPositions = new();
-        private readonly List<TextMeshPro> dragNumberTexts = new();
-        private Transform dragNumberRoot;
         private StageData autoSolverInitialStageData;
         private TMP_Text autoSolverStatusText;
         private Coroutine autoSolverRoutine;
@@ -103,7 +100,6 @@ namespace UI.InGame
         private int tutorialPageIndex;
         private int lastPauseInputFrame = -1;
         private int lastInteractInputFrame = -1;
-        private bool isTileDragNumberActive;
 
         private void Awake()
         {
@@ -113,17 +109,6 @@ namespace UI.InGame
             whiteSprite = CreateWhiteSprite();
             BuildUI();
             ApplyLetterboxToSceneCanvases();
-            ApplyGlobalScrollSensitivity();
-        }
-
-        private void ApplyGlobalScrollSensitivity()
-        {
-            ScrollRect[] scrollRects = FindObjectsByType<ScrollRect>(FindObjectsSortMode.None);
-            for (int i = 0; i < scrollRects.Length; i++)
-            {
-                if (scrollRects[i] != null)
-                    scrollRects[i].scrollSensitivity = 8f;
-            }
         }
 
         private void ApplyLetterboxToSceneCanvases()
@@ -207,8 +192,6 @@ namespace UI.InGame
 
         private void OnDestroy()
         {
-            ClearTileDragNumbers();
-
             if (gridManager != null)
                 gridManager.StageSolved -= HandleStageSolved;
 
@@ -242,7 +225,6 @@ namespace UI.InGame
                 HandleInteractPressed();
 
             HandleEditorAutoSolverHotkeys();
-            HandleTileDragNumbers();
 
             UpdateHoleInteractIcon();
             UpdateMoveLimitText();
@@ -379,102 +361,6 @@ namespace UI.InGame
             }
 
             StartSolutionPlaybackFromBeginning();
-        }
-
-        private void HandleTileDragNumbers()
-        {
-            Mouse mouse = Mouse.current;
-            if (mouse == null || gridManager == null || Camera.main == null)
-                return;
-
-            if (mouse.leftButton.wasPressedThisFrame)
-            {
-                if (IsPointerOverUI())
-                    return;
-
-                if (TryGetMouseGridPosition(out Vector2Int gridPosition))
-                {
-                    isTileDragNumberActive = true;
-                    ClearTileDragNumbers();
-                    AddTileDragNumber(gridPosition);
-                }
-            }
-
-            if (isTileDragNumberActive && mouse.leftButton.isPressed)
-            {
-                if (TryGetMouseGridPosition(out Vector2Int gridPosition))
-                    AddTileDragNumber(gridPosition);
-            }
-
-            if (isTileDragNumberActive && mouse.leftButton.wasReleasedThisFrame)
-            {
-                isTileDragNumberActive = false;
-                StartCoroutine(ClearTileDragNumbersAfterDelay(0.45f));
-            }
-        }
-
-        private bool TryGetMouseGridPosition(out Vector2Int gridPosition)
-        {
-            gridPosition = Vector2Int.zero;
-            if (Mouse.current == null || gridManager == null || Camera.main == null)
-                return false;
-
-            Vector2 screenPosition = Mouse.current.position.ReadValue();
-            Vector3 worldPosition = Camera.main.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, Mathf.Abs(Camera.main.transform.position.z)));
-            gridPosition = gridManager.WorldToGrid(worldPosition);
-            return gridManager.IsInside(gridPosition);
-        }
-
-        private bool IsPointerOverUI()
-        {
-            return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
-        }
-
-        private void AddTileDragNumber(Vector2Int gridPosition)
-        {
-            if (dragNumberPositions.Contains(gridPosition))
-                return;
-
-            dragNumberPositions.Add(gridPosition);
-
-            if (dragNumberRoot == null)
-                dragNumberRoot = new GameObject("TileDragNumbers").transform;
-
-            GameObject obj = new GameObject($"TileDragNumber_{dragNumberPositions.Count}");
-            obj.transform.SetParent(dragNumberRoot, false);
-            obj.transform.position = gridManager.GridToWorld(gridPosition) + Vector3.back * 0.1f;
-
-            TextMeshPro tmp = obj.AddComponent<TextMeshPro>();
-            tmp.font = font;
-            tmp.text = dragNumberPositions.Count.ToString();
-            tmp.fontSize = 5.2f;
-            tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = new Color(1f, 0.95f, 0.25f, 1f);
-            tmp.enableWordWrapping = false;
-            MeshRenderer textRenderer = tmp.GetComponent<MeshRenderer>();
-            if (textRenderer != null)
-                textRenderer.sortingOrder = 500;
-            dragNumberTexts.Add(tmp);
-        }
-
-        private IEnumerator ClearTileDragNumbersAfterDelay(float delay)
-        {
-            yield return new WaitForSeconds(delay);
-            if (!isTileDragNumberActive)
-                ClearTileDragNumbers();
-        }
-
-        private void ClearTileDragNumbers()
-        {
-            dragNumberPositions.Clear();
-
-            for (int i = 0; i < dragNumberTexts.Count; i++)
-            {
-                if (dragNumberTexts[i] != null)
-                    Destroy(dragNumberTexts[i].gameObject);
-            }
-
-            dragNumberTexts.Clear();
         }
 
         private void ToggleEditorTestAutoSolver()
@@ -1492,8 +1378,6 @@ namespace UI.InGame
             solutionPlaybackPaused = false;
             solutionPlaybackActions.Clear();
             StopAutoSolverRoutine(true);
-            ClearTileDragNumbers();
-            isTileDragNumberActive = false;
             stageSolved = false;
             isJumpingIntoHole = false;
             clearHoleActivated = false;
@@ -1542,8 +1426,6 @@ namespace UI.InGame
                 return;
 
             stageSolved = true;
-            ClearTileDragNumbers();
-            isTileDragNumberActive = false;
             clearHoleActivated = false;
             if (!isAutoSolverRunning)
                 StopAutoSolverRoutine(true);
@@ -1722,11 +1604,16 @@ namespace UI.InGame
                 return;
             }
 
+            StageData saveStage = gridManager != null && gridManager.OriginalStageData != null
+                ? gridManager.OriginalStageData.Clone()
+                : currentStage.Clone();
+
+            saveStage.solutionActions = CloneSolutionActions(editorRecordedSolutionActions);
             currentStage.solutionActions = CloneSolutionActions(editorRecordedSolutionActions);
 
             try
             {
-                StageBinarySerializer.Save(currentStage, filePath);
+                StageBinarySerializer.Save(saveStage, filePath);
                 GameSceneRequest.ReportCurrentBatchSolutionResult(true, $"답안 저장 완료: {Path.GetFileName(filePath)} / {currentStage.solutionActions.Count} 행동");
             }
             catch (Exception exception)
@@ -1768,6 +1655,17 @@ namespace UI.InGame
                 SceneFadeController.Instance.LoadSceneFromCurrentFade(returnScene, 0.35f);
             else
                 SceneFadeController.Instance.LoadScene(returnScene, 0.35f);
+        }
+
+        public void DebugSkipToNextStage()
+        {
+            if (stageSolvedPresentationRoutine != null)
+            {
+                StopCoroutine(stageSolvedPresentationRoutine);
+                stageSolvedPresentationRoutine = null;
+            }
+
+            LoadNextStageOrReturnTitle();
         }
 
         private void LoadNextStageOrReturnTitle()

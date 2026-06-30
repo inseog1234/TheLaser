@@ -58,7 +58,7 @@ namespace Core
                 turnHistoryController.ClearHistory();
 
             if (gridManager != null && gridManager.CurrentStageData != null)
-                gridManager.LoadStage(gridManager.CurrentStageData);
+                gridManager.ResetRuntimeToOriginalStage();
 
             if (playerGridController != null)
                 playerGridController.ResetToStageStartImmediate();
