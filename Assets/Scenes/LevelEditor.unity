@@ -324,6 +324,7 @@ MonoBehaviour:
     moveLimit: 0
     playerStartPosition: {x: 0, y: 0}
     playerStartDirection: 1
+    playerRoutePositions: []
     wallPositions: []
     targetPositions: []
     advancedTargets: []
@@ -336,7 +337,7 @@ MonoBehaviour:
   defaultHeight: 8
   defaultLaserMaxDistance: 8
   defaultMoveLimit: 0
-  allowBuiltInLevelLoad: 0
+  allowBuiltInLevelLoad: 1
   helpTool: 0
   editorCamera: {fileID: 100002}
   cameraPanSpeed: 0.015
