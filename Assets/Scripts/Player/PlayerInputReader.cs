@@ -26,6 +26,7 @@ namespace Player
         private GridDirection heldMoveDirection;
         private bool hasHeldMoveDirection;
         private float nextHeldMoveTime;
+        private int lastInteractFrame = -1;
 
         public event Action<GridDirection> MovePressed;
         public event Action LaserPressed;
@@ -64,6 +65,7 @@ namespace Player
             }
 
             HandleHeldMoveInput();
+            HandleKeyboardInteractInput();
         }
 
         private void HandleHeldMoveInput()
@@ -102,12 +104,6 @@ namespace Player
             if (laserAction != null)
                 laserAction.action.performed += OnLaserPerformed;
 
-            if (rotateClockwiseAction != null)
-                rotateClockwiseAction.action.performed += OnRotateClockwisePerformed;
-
-            if (rotateCounterClockwiseAction != null)
-                rotateCounterClockwiseAction.action.performed += OnRotateCounterClockwisePerformed;
-
             if (resetAction != null)
                 resetAction.action.performed += OnResetPerformed;
 
@@ -132,12 +128,6 @@ namespace Player
             if (laserAction != null)
                 laserAction.action.performed -= OnLaserPerformed;
 
-            if (rotateClockwiseAction != null)
-                rotateClockwiseAction.action.performed -= OnRotateClockwisePerformed;
-
-            if (rotateCounterClockwiseAction != null)
-                rotateCounterClockwiseAction.action.performed -= OnRotateCounterClockwisePerformed;
-
             if (resetAction != null)
                 resetAction.action.performed -= OnResetPerformed;
 
@@ -158,8 +148,6 @@ namespace Player
         {
             SetActionEnabled(moveAction, enabled);
             SetActionEnabled(laserAction, enabled);
-            SetActionEnabled(rotateClockwiseAction, enabled);
-            SetActionEnabled(rotateCounterClockwiseAction, enabled);
             SetActionEnabled(resetAction, enabled);
             SetActionEnabled(undoAction, enabled);
             SetActionEnabled(redoAction, enabled);
@@ -216,7 +204,6 @@ namespace Player
             if (!inputEnabled)
                 return;
 
-            RotateClockwisePressed?.Invoke();
         }
 
         private void OnRotateCounterClockwisePerformed(InputAction.CallbackContext context)
@@ -224,7 +211,6 @@ namespace Player
             if (!inputEnabled)
                 return;
 
-            RotateCounterClockwisePressed?.Invoke();
         }
 
         private void OnResetPerformed(InputAction.CallbackContext context)
@@ -257,6 +243,22 @@ namespace Player
             if (!inputEnabled)
                 return;
 
+            if (KeyBindingManager.WasPressedThisFrame(KeyBindingAction.Interact))
+                RaiseInteractPressed();
+        }
+
+        private void HandleKeyboardInteractInput()
+        {
+            if (KeyBindingManager.WasPressedThisFrame(KeyBindingAction.Interact))
+                RaiseInteractPressed();
+        }
+
+        private void RaiseInteractPressed()
+        {
+            if (lastInteractFrame == Time.frameCount)
+                return;
+
+            lastInteractFrame = Time.frameCount;
             InteractPressed?.Invoke();
         }
 

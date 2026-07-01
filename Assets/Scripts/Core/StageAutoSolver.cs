@@ -968,7 +968,6 @@ namespace Core
                 {
                     new AutoAction { Kind = AutoActionKind.FireLaser, Direction = state.FacingDirection },
                     new AutoAction { Kind = AutoActionKind.RotateClockwise, Direction = state.FacingDirection },
-                    new AutoAction { Kind = AutoActionKind.RotateCounterClockwise, Direction = state.FacingDirection },
                     new AutoAction { Kind = AutoActionKind.Move, Direction = state.FacingDirection },
                     new AutoAction { Kind = AutoActionKind.Move, Direction = state.FacingDirection.RotateClockwise() },
                     new AutoAction { Kind = AutoActionKind.Move, Direction = state.FacingDirection.RotateCounterClockwise() },
@@ -1070,7 +1069,6 @@ namespace Core
                 new AutoAction { Kind = AutoActionKind.Move, Direction = MoveDirections[2] },
                 new AutoAction { Kind = AutoActionKind.Move, Direction = MoveDirections[3] },
                 new AutoAction { Kind = AutoActionKind.RotateClockwise, Direction = state.FacingDirection },
-                new AutoAction { Kind = AutoActionKind.RotateCounterClockwise, Direction = state.FacingDirection },
                 new AutoAction { Kind = AutoActionKind.FireLaser, Direction = state.FacingDirection }
             };
         }

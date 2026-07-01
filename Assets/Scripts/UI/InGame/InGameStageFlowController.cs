@@ -226,9 +226,6 @@ namespace UI.InGame
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
                 HandlePausePressed();
 
-            if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
-                HandleInteractPressed();
-
             HandleEditorAutoSolverHotkeys();
             HandleTileDragNumbers();
 
@@ -750,11 +747,13 @@ namespace UI.InGame
                     break;
 
                 case StageSolutionActionType.RotateClockwise:
-                    playerController.TryRotateForwardObject(true);
+                    playerController.TryRotateForwardObjectClockwise();
                     break;
 
                 case StageSolutionActionType.RotateCounterClockwise:
-                    playerController.TryRotateForwardObject(false);
+                    playerController.TryRotateForwardObjectClockwise();
+                    playerController.TryRotateForwardObjectClockwise();
+                    playerController.TryRotateForwardObjectClockwise();
                     break;
 
                 default:
@@ -938,7 +937,7 @@ namespace UI.InGame
 
 
             holeVisual = null;
-            holeInteractText = AddText(root, "SPACE", 22, TextAlignmentOptions.Center, Color.white, false);
+            holeInteractText = AddText(root, "F", 22, TextAlignmentOptions.Center, Color.white, false);
             holeInteractText.rectTransform.sizeDelta = new Vector2(120f, 36f);
             holeInteractText.gameObject.SetActive(false);
 
@@ -1244,18 +1243,20 @@ namespace UI.InGame
 
         private void UpdateHoleInteractIcon()
         {
-            if (!stageSolved || !clearHoleActivated || gridManager == null || playerController == null || holeInteractText == null)
+            if (gridManager == null || playerController == null || holeInteractText == null)
             {
                 if (holeInteractText != null) holeInteractText.gameObject.SetActive(false);
                 return;
             }
 
-            Vector2Int hole = gridManager.ClearHolePosition;
-            bool adjacent = Mathf.Abs(playerController.GridPosition.x - hole.x) + Mathf.Abs(playerController.GridPosition.y - hole.y) == 1;
-            holeInteractText.gameObject.SetActive(adjacent && !isJumpingIntoHole);
-            if (adjacent && Camera.main != null)
+            bool hasPrompt = TryGetClearHoleInteractPosition(out Vector2Int promptPosition) ||
+                TryGetRotatableObjectInteractPosition(out promptPosition);
+
+            holeInteractText.text = "F";
+            holeInteractText.gameObject.SetActive(hasPrompt && !isJumpingIntoHole);
+            if (hasPrompt && Camera.main != null)
             {
-                Vector3 world = gridManager.GridToWorld(hole) + Vector3.up * 0.65f;
+                Vector3 world = gridManager.GridToWorld(promptPosition) + Vector3.up * 0.65f;
                 Vector2 screen = Camera.main.WorldToScreenPoint(world);
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(root, screen, null, out Vector2 local);
                 holeInteractText.rectTransform.anchoredPosition = local;
@@ -1269,15 +1270,37 @@ namespace UI.InGame
 
             lastInteractInputFrame = Time.frameCount;
 
-            if (!stageSolved || !clearHoleActivated || playerController == null || gridManager == null || isJumpingIntoHole)
+            if (playerController == null || gridManager == null || isJumpingIntoHole)
                 return;
 
-            Vector2Int hole = gridManager.ClearHolePosition;
-            bool adjacent = Mathf.Abs(playerController.GridPosition.x - hole.x) + Mathf.Abs(playerController.GridPosition.y - hole.y) == 1;
-            if (!adjacent)
+            if (TryGetClearHoleInteractPosition(out _))
+            {
+                StartCoroutine(JumpIntoHoleRoutine());
                 return;
+            }
 
-            StartCoroutine(JumpIntoHoleRoutine());
+            playerController.TryRotateForwardObjectClockwise();
+        }
+
+        private bool TryGetClearHoleInteractPosition(out Vector2Int hole)
+        {
+            hole = Vector2Int.zero;
+            if (!stageSolved || !clearHoleActivated || gridManager == null || playerController == null)
+                return false;
+
+            hole = gridManager.ClearHolePosition;
+            return Mathf.Abs(playerController.GridPosition.x - hole.x) + Mathf.Abs(playerController.GridPosition.y - hole.y) == 1;
+        }
+
+        private bool TryGetRotatableObjectInteractPosition(out Vector2Int objectPosition)
+        {
+            objectPosition = Vector2Int.zero;
+            if (playerController == null || gridManager == null || stageSolved || isJumpingIntoHole)
+                return false;
+
+            objectPosition = playerController.GetForwardPosition();
+            GridObject targetObject = gridManager.GetObjectAt(objectPosition);
+            return targetObject != null && targetObject.CanRotate && playerController.CanRotateForwardObject();
         }
 
         private IEnumerator JumpIntoHoleRoutine()

@@ -32,8 +32,6 @@ namespace Core
             KeyBindingAction.MoveLeft,
             KeyBindingAction.MoveRight,
             KeyBindingAction.FireLaser,
-            KeyBindingAction.RotateClockwise,
-            KeyBindingAction.RotateCounterClockwise,
             KeyBindingAction.Reset,
             KeyBindingAction.Undo,
             KeyBindingAction.Redo,
@@ -45,7 +43,16 @@ namespace Core
 
         public static Key GetKey(KeyBindingAction action)
         {
-            return (Key)PlayerPrefs.GetInt(PrefPrefix + action, (int)GetDefaultKey(action));
+            string keyName = PrefPrefix + action;
+            Key key = (Key)PlayerPrefs.GetInt(keyName, (int)GetDefaultKey(action));
+            if (action == KeyBindingAction.Interact && key == Key.Space)
+            {
+                key = Key.F;
+                PlayerPrefs.SetInt(keyName, (int)key);
+                PlayerPrefs.Save();
+            }
+
+            return key;
         }
 
         public static bool TrySetKey(KeyBindingAction action, Key key, out string message)
@@ -177,7 +184,7 @@ namespace Core
                 case KeyBindingAction.Reset: return Key.R;
                 case KeyBindingAction.Undo: return Key.Z;
                 case KeyBindingAction.Redo: return Key.Y;
-                case KeyBindingAction.Interact: return Key.Space;
+                case KeyBindingAction.Interact: return Key.F;
                 case KeyBindingAction.Pause: return Key.Escape;
                 default: return Key.None;
             }

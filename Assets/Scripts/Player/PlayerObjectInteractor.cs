@@ -72,5 +72,15 @@ namespace Player
 
             return true;
         }
+
+        public bool CanRotateObject(Vector2Int playerPosition, GridDirection facingDirection)
+        {
+            if (gridManager == null)
+                return false;
+
+            Vector2Int objectPosition = playerPosition + facingDirection.ToVector();
+            GridObject targetObject = gridManager.GetObjectAt(objectPosition);
+            return targetObject != null && targetObject.CanRotate;
+        }
     }
 }

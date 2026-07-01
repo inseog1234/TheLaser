@@ -506,7 +506,7 @@ namespace Player
             if (Keyboard.current == null)
                 return false;
 
-            return Keyboard.current.sKey.isPressed;
+            return Keyboard.current.qKey.isPressed;
         }
 
         private void ApplyFullMapOverview(ref Vector3 desiredPosition, ref float desiredOrthographicSize)

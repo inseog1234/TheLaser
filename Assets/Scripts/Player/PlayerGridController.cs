@@ -66,8 +66,6 @@ namespace Player
 
             inputReader.MovePressed += HandleMovePressed;
             inputReader.LaserPressed += HandleLaserPressed;
-            inputReader.RotateClockwisePressed += HandleRotateClockwisePressed;
-            inputReader.RotateCounterClockwisePressed += HandleRotateCounterClockwisePressed;
             inputReader.ResetPressed += HandleResetPressed;
         }
 
@@ -78,8 +76,6 @@ namespace Player
 
             inputReader.MovePressed -= HandleMovePressed;
             inputReader.LaserPressed -= HandleLaserPressed;
-            inputReader.RotateClockwisePressed -= HandleRotateClockwisePressed;
-            inputReader.RotateCounterClockwisePressed -= HandleRotateCounterClockwisePressed;
             inputReader.ResetPressed -= HandleResetPressed;
         }
 
@@ -209,16 +205,6 @@ namespace Player
         {
         }
 
-        private void HandleRotateClockwisePressed()
-        {
-            TryRotateForwardObject(true);
-        }
-
-        private void HandleRotateCounterClockwisePressed()
-        {
-            TryRotateForwardObject(false);
-        }
-
         public bool TryRotateForwardObject(bool clockwise)
         {
             if (!controlsEnabled)
@@ -246,6 +232,22 @@ namespace Player
 
             turnHistoryController?.CancelTurn();
             return false;
+        }
+
+        public bool TryRotateForwardObjectClockwise()
+        {
+            return TryRotateForwardObject(true);
+        }
+
+        public bool CanRotateForwardObject()
+        {
+            if (!controlsEnabled || isMoving || objectInteractor == null)
+                return false;
+
+            if (turnHistoryController != null && turnHistoryController.IsMoveLimitReached)
+                return false;
+
+            return objectInteractor.CanRotateObject(gridPosition, facingDirection);
         }
 
         private void NotifySolutionMove(GridDirection direction)
