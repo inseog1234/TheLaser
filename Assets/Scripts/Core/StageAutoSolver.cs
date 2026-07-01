@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using Laser;
 using UnityEngine;
 
 namespace Core
@@ -1972,10 +1973,10 @@ namespace Core
         {
             LaserSolveResult result = new LaserSolveResult();
             Queue<BeamState> beamQueue = new Queue<BeamState>();
-            HashSet<string> visitedStates = new HashSet<string>();
+            HashSet<LaserBeamState> visitedStates = new HashSet<LaserBeamState>();
             Dictionary<int, int> beamStepCounts = new Dictionary<int, int>();
 
-            int maxDistance = stageData.useLaserDistanceLimit && stageData.laserMaxDistance > 0 ? stageData.laserMaxDistance : -1;
+            int maxDistance = LaserSimulationRules.ResolveInitialRemainingDistance(stageData.useLaserDistanceLimit, stageData.laserMaxDistance);
             int nextBeamId = 0;
             beamQueue.Enqueue(new BeamState
             {
@@ -1989,7 +1990,7 @@ namespace Core
 
             while (beamQueue.Count > 0)
             {
-                if (nextBeamId > 64)
+                if (nextBeamId > LaserSimulationRules.DefaultMaxTotalBeamCount)
                     break;
 
                 BeamState beam = beamQueue.Dequeue();
@@ -2007,7 +2008,7 @@ namespace Core
             SolverState state,
             LaserSolveResult result,
             Queue<BeamState> beamQueue,
-            HashSet<string> visitedStates,
+            HashSet<LaserBeamState> visitedStates,
             Dictionary<int, int> beamStepCounts,
             BeamState beam,
             ref int nextBeamId)
@@ -2019,8 +2020,9 @@ namespace Core
             int stepCount = beam.StartStepCount;
 
             AddBeamStepCount(beamStepCounts, beam.BeamId, stepCount);
+            LaserSimulationRules.TryRegisterVisitedState(visitedStates, currentPosition, currentDirection, currentColor, remainingDistance);
 
-            for (int step = 0; step < 160; step++)
+            for (int step = 0; step < LaserSimulationRules.DefaultSolverMaxStepCountPerBeam; step++)
             {
                 if (remainingDistance == 0)
                 {
@@ -2051,8 +2053,7 @@ namespace Core
                 if (remainingDistance > 0)
                     remainingDistance--;
 
-                string stateKey = $"{nextPosition.x},{nextPosition.y},{(int)currentDirection},{(int)currentColor},{remainingDistance}";
-                if (!visitedStates.Add(stateKey))
+                if (!LaserSimulationRules.TryRegisterVisitedState(visitedStates, nextPosition, currentDirection, currentColor, remainingDistance))
                     break;
 
                 if (HasWall(state, nextPosition))
@@ -2166,7 +2167,7 @@ namespace Core
                         List<LaserDirection> outputs = GetSplitterOutputs(obj, currentDirection);
                         for (int i = 0; i < outputs.Count; i++)
                         {
-                            if (nextBeamId >= 64)
+                            if (nextBeamId >= LaserSimulationRules.DefaultMaxTotalBeamCount)
                                 break;
 
                             int beamId = nextBeamId++;
@@ -2448,86 +2449,20 @@ namespace Core
         private static bool IsIntersectionTargetActivated(StageTargetData target, LaserSolveResult result)
         {
             Vector2 targetPoint = new Vector2(target.position.x, target.position.y);
-            int requiredCount = Mathf.Clamp(target.requiredIntersectionCount, 2, 3);
-            int matchedCount = 0;
-
-            for (int a = 0; a < result.Segments.Count; a++)
+            List<IntersectionTargetEvaluator.SegmentInput> segments = new();
+            for (int i = 0; i < result.Segments.Count; i++)
             {
-                for (int b = a + 1; b < result.Segments.Count; b++)
-                {
-                    Segment segmentA = result.Segments[a];
-                    Segment segmentB = result.Segments[b];
-                    if (segmentA.BeamId == segmentB.BeamId)
-                        continue;
-
-                    if (!TryGetSegmentIntersection(segmentA.Start, segmentA.End, segmentB.Start, segmentB.End, out Vector2 intersection))
-                        continue;
-
-                    if (Vector2.Distance(targetPoint, intersection) > target.detectionRadius)
-                        continue;
-
-                    if (!IsIntersectionColorMatched(target, segmentA.Color, segmentB.Color))
-                        continue;
-
-                    matchedCount++;
-                    if (matchedCount >= requiredCount - 1)
-                        return true;
-                }
+                Segment segment = result.Segments[i];
+                segments.Add(new IntersectionTargetEvaluator.SegmentInput(segment.Start, segment.End, segment.Color, segment.BeamId));
             }
 
-            return false;
-        }
-
-        private static bool TryGetSegmentIntersection(Vector2Int a1, Vector2Int a2, Vector2Int b1, Vector2Int b2, out Vector2 intersection)
-        {
-            Vector2 p = a1;
-            Vector2 r = (Vector2)a2 - p;
-            Vector2 q = b1;
-            Vector2 s = (Vector2)b2 - q;
-            float cross = r.x * s.y - r.y * s.x;
-
-            if (Mathf.Abs(cross) < 0.0001f)
-            {
-                intersection = Vector2.zero;
-                return false;
-            }
-
-            Vector2 qp = q - p;
-            float t = (qp.x * s.y - qp.y * s.x) / cross;
-            float u = (qp.x * r.y - qp.y * r.x) / cross;
-
-            if (t < 0f || t > 1f || u < 0f || u > 1f)
-            {
-                intersection = Vector2.zero;
-                return false;
-            }
-
-            intersection = p + t * r;
-            return true;
-        }
-
-        private static bool IsIntersectionColorMatched(StageTargetData target, LaserColorKind colorA, LaserColorKind colorB)
-        {
-            if (target.intersectionColors == null || target.intersectionColors.Count <= 0)
-                return !target.requireDifferentColors || colorA != colorB;
-
-            bool hasSpecificColor = false;
-            bool matched = false;
-            for (int i = 0; i < target.intersectionColors.Count; i++)
-            {
-                LaserColorKind color = target.intersectionColors[i];
-                if (color == LaserColorKind.Default)
-                    continue;
-
-                hasSpecificColor = true;
-                if (color == colorA || color == colorB)
-                    matched = true;
-            }
-
-            if (!hasSpecificColor)
-                return !target.requireDifferentColors || colorA != colorB;
-
-            return matched;
+            return IntersectionTargetEvaluator.IsTargetActivated(
+                targetPoint,
+                target.detectionRadius,
+                target.requiredIntersectionCount,
+                target.intersectionColors,
+                target.requireDifferentColors,
+                segments);
         }
 
         private static bool IsLaserDistanceExactlyMatched(StageData stageData, LaserSolveResult result)

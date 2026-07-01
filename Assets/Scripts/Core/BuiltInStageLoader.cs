@@ -64,21 +64,29 @@ namespace Core
             if (currentStage == null)
                 return string.Empty;
 
-            int targetChapter = currentStage.chapterIndex;
-            int targetStageIndex = currentStage.stageIndexInChapter + 1;
             List<BuiltInStageEntry> entries = LoadEntries();
-
             for (int i = 0; i < entries.Count; i++)
             {
                 StageData data = entries[i].Data;
                 if (data == null)
                     continue;
 
-                if (data.chapterIndex == targetChapter && data.stageIndexInChapter == targetStageIndex)
+                if (IsStageAfter(data, currentStage))
                     return StageFilePaths.ToBuiltInResourcePath(entries[i].ResourceKey);
             }
 
             return string.Empty;
+        }
+
+        private static bool IsStageAfter(StageData candidate, StageData current)
+        {
+            if (candidate.chapterIndex > current.chapterIndex)
+                return true;
+
+            if (candidate.chapterIndex < current.chapterIndex)
+                return false;
+
+            return candidate.stageIndexInChapter > current.stageIndexInChapter;
         }
 
         private static int CompareEntries(BuiltInStageEntry a, BuiltInStageEntry b)

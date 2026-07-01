@@ -11,7 +11,12 @@ namespace Laser
         public readonly LaserColorKind Color;
         public readonly int RemainingDistance;
 
-        public LaserBeamState(Vector2Int position, LaserDirection direction, LaserColorKind color, int remainingDistance = -1)
+        public LaserBeamState(Vector2Int position, LaserDirection direction, LaserColorKind color)
+            : this(position, direction, color, -1)
+        {
+        }
+
+        public LaserBeamState(Vector2Int position, LaserDirection direction, LaserColorKind color, int remainingDistance)
         {
             Position = position;
             Direction = direction;

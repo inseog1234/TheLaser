@@ -37,6 +37,9 @@ namespace Core
         public Vector2Int playerStartPosition;
         public GridDirection playerStartDirection = GridDirection.Right;
 
+        [Header("Editor Player Route")]
+        public List<Vector2Int> playerRoutePositions = new();
+
         [Header("Cells")]
         public List<Vector2Int> wallPositions = new();
         public List<Vector2Int> targetPositions = new();
@@ -126,6 +129,7 @@ namespace Core
                 moveLimit = moveLimit,
                 playerStartPosition = playerStartPosition,
                 playerStartDirection = playerStartDirection,
+                playerRoutePositions = playerRoutePositions != null ? new List<Vector2Int>(playerRoutePositions) : new List<Vector2Int>(),
                 wallPositions = new List<Vector2Int>(wallPositions),
                 targetPositions = new List<Vector2Int>(targetPositions),
                 sequenceLockPattern = new List<int>(sequenceLockPattern)

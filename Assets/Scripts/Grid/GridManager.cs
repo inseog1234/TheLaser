@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 using Core;
 using Laser;
@@ -11,6 +12,7 @@ namespace Grid
         [Header("Stage")]
         [SerializeField] private StageData stageData = new StageData();
         [SerializeField] private bool loadOnAwake = true;
+        private StageData originalStageData;
 
         [Header("Binary Stage Load")]
         [SerializeField] private bool loadStageFromBinaryOnAwake = false;
@@ -19,7 +21,6 @@ namespace Grid
         [SerializeField] private string customStageFilePath;
 
         private string currentStageFilePath;
-        private StageData originalStageData;
         private bool stageCompletionLocked;
         private bool clearHoleActive;
         private Vector2Int clearHolePosition;
@@ -72,7 +73,6 @@ namespace Grid
         private GameObject spawnedClearHoleObject;
 
         public StageData CurrentStageData => stageData;
-        public StageData OriginalStageData => originalStageData;
         public int Width => stageData != null ? stageData.width : 0;
         public int Height => stageData != null ? stageData.height : 0;
         public float CellSize => cellSize;
@@ -142,25 +142,7 @@ namespace Grid
                 return;
 
             originalStageData = targetStageData.Clone();
-            NormalizeSequenceTargets(originalStageData);
-            stageData = originalStageData.Clone();
-            RebuildRuntimeStage();
-        }
-
-        public void ResetRuntimeToOriginalStage()
-        {
-            if (originalStageData == null)
-                return;
-
-            stageData = originalStageData.Clone();
-            RebuildRuntimeStage();
-        }
-
-        private void RebuildRuntimeStage()
-        {
-            if (stageData == null)
-                return;
-
+            stageData = targetStageData.Clone();
             NormalizeSequenceTargets(stageData);
             stageCompletionLocked = false;
             clearHoleActive = false;
@@ -175,6 +157,15 @@ namespace Grid
             SpawnTransformZones();
             SpawnFixedWalls();
             SpawnStageObjects();
+        }
+
+        public void ResetRuntimeToOriginalStage()
+        {
+            StageData resetSource = originalStageData != null ? originalStageData.Clone() : stageData != null ? stageData.Clone() : null;
+            if (resetSource == null)
+                return;
+
+            LoadStage(resetSource);
         }
 
         private void NormalizeSequenceTargets(StageData targetStageData)
@@ -749,6 +740,13 @@ namespace Grid
 
         private void EvaluateIntersectionTargets(LaserResult result)
         {
+            List<IntersectionTargetEvaluator.SegmentInput> segments = new();
+            for (int i = 0; i < result.Segments.Count; i++)
+            {
+                LaserSegment segment = result.Segments[i];
+                segments.Add(new IntersectionTargetEvaluator.SegmentInput(segment.Start, segment.End, segment.Color, segment.BeamId));
+            }
+
             for (int i = 0; i < spawnedTargets.Count; i++)
             {
                 GridTarget target = spawnedTargets[i];
@@ -757,41 +755,13 @@ namespace Grid
                     continue;
 
                 Vector2 targetPoint = new Vector2(target.GridPosition.x, target.GridPosition.y);
-                int requiredCount = Mathf.Clamp(target.RequiredIntersectionCount, 2, 3);
-                int matchedCount = 0;
-                bool activated = false;
-
-                for (int a = 0; a < result.Segments.Count; a++)
-                {
-                    for (int b = a + 1; b < result.Segments.Count; b++)
-                    {
-                        LaserSegment segmentA = result.Segments[a];
-                        LaserSegment segmentB = result.Segments[b];
-
-                        if (segmentA.BeamId == segmentB.BeamId)
-                            continue;
-
-                        if (!LaserGeometryUtility.TryGetSegmentIntersection(segmentA.Start, segmentA.End, segmentB.Start, segmentB.End, out Vector2 intersection))
-                            continue;
-
-                        if (Vector2.Distance(targetPoint, intersection) > target.DetectionRadius)
-                            continue;
-
-                        if (!IsIntersectionColorMatched(target, segmentA.Color, segmentB.Color))
-                            continue;
-
-                        matchedCount++;
-
-                        if (matchedCount >= requiredCount - 1)
-                        {
-                            activated = true;
-                            break;
-                        }
-                    }
-
-                    if (activated)
-                        break;
-                }
+                bool activated = IntersectionTargetEvaluator.IsTargetActivated(
+                    targetPoint,
+                    target.DetectionRadius,
+                    target.RequiredIntersectionCount,
+                    target.IntersectionColors,
+                    target.RequireDifferentColors,
+                    segments);
 
                 target.SetActivated(activated);
             }
@@ -1074,6 +1044,9 @@ namespace Grid
             if (!IsInside(position))
                 return false;
 
+            if (clearHoleActive && position == clearHolePosition)
+                return false;
+
             if (HasWall(position))
                 return false;
 
@@ -1139,6 +1112,112 @@ namespace Grid
             return true;
         }
 
+        public Vector2Int ResolveReachableClearHolePosition(Vector2Int preferredPosition, Vector2Int playerPosition)
+        {
+            Vector2Int start = IsInside(preferredPosition) ? preferredPosition : new Vector2Int(Width / 2, Height / 2);
+            Queue<Vector2Int> open = new Queue<Vector2Int>();
+            HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
+            open.Enqueue(start);
+            visited.Add(start);
+
+            Vector2Int fallback = start;
+            bool hasFallback = false;
+
+            while (open.Count > 0)
+            {
+                Vector2Int current = open.Dequeue();
+
+                if (IsClearHoleSpawnCandidate(current, playerPosition))
+                {
+                    if (!hasFallback)
+                    {
+                        fallback = current;
+                        hasFallback = true;
+                    }
+
+                    if (HasReachableEntranceForClearHole(current, playerPosition))
+                        return current;
+                }
+
+                EnqueueClearHoleSearchPosition(current + Vector2Int.right, open, visited);
+                EnqueueClearHoleSearchPosition(current + Vector2Int.left, open, visited);
+                EnqueueClearHoleSearchPosition(current + Vector2Int.up, open, visited);
+                EnqueueClearHoleSearchPosition(current + Vector2Int.down, open, visited);
+            }
+
+            return hasFallback ? fallback : start;
+        }
+
+        private void EnqueueClearHoleSearchPosition(Vector2Int position, Queue<Vector2Int> open, HashSet<Vector2Int> visited)
+        {
+            if (!IsInside(position) || visited.Contains(position))
+                return;
+
+            visited.Add(position);
+            open.Enqueue(position);
+        }
+
+        private bool IsClearHoleSpawnCandidate(Vector2Int position, Vector2Int playerPosition)
+        {
+            if (!IsInside(position))
+                return false;
+
+            if (position == playerPosition)
+                return false;
+
+            if (HasWall(position) || HasObject(position))
+                return false;
+
+            return true;
+        }
+
+        private bool HasReachableEntranceForClearHole(Vector2Int holePosition, Vector2Int playerPosition)
+        {
+            if (!IsInside(playerPosition))
+                return true;
+
+            if (IsAdjacent(playerPosition, holePosition))
+                return true;
+
+            Queue<Vector2Int> open = new Queue<Vector2Int>();
+            HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
+            open.Enqueue(playerPosition);
+            visited.Add(playerPosition);
+
+            while (open.Count > 0)
+            {
+                Vector2Int current = open.Dequeue();
+
+                if (IsAdjacent(current, holePosition))
+                    return true;
+
+                EnqueueReachableCell(current + Vector2Int.right, holePosition, open, visited);
+                EnqueueReachableCell(current + Vector2Int.left, holePosition, open, visited);
+                EnqueueReachableCell(current + Vector2Int.up, holePosition, open, visited);
+                EnqueueReachableCell(current + Vector2Int.down, holePosition, open, visited);
+            }
+
+            return false;
+        }
+
+        private void EnqueueReachableCell(Vector2Int position, Vector2Int blockedHolePosition, Queue<Vector2Int> open, HashSet<Vector2Int> visited)
+        {
+            if (!IsInside(position) || visited.Contains(position) || position == blockedHolePosition)
+                return;
+
+            GridCell cell = GetCell(position);
+            if (cell == null || !cell.IsWalkable)
+                return;
+
+            visited.Add(position);
+            open.Enqueue(position);
+        }
+
+        private static bool IsAdjacent(Vector2Int a, Vector2Int b)
+        {
+            return Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y) == 1;
+        }
+
         public Vector3 GridToWorld(Vector2Int gridPosition)
         {
             Vector3 worldPosition = new Vector3(gridPosition.x * cellSize, gridPosition.y * cellSize, 0f);
@@ -1201,93 +1280,6 @@ namespace Grid
             }
         }
 
-        public int GetActivatedTargetCount()
-        {
-            int count = 0;
-
-            for (int i = 0; i < spawnedTargets.Count; i++)
-            {
-                if (spawnedTargets[i] != null && spawnedTargets[i].IsActivated)
-                    count++;
-            }
-
-            return count;
-        }
-
-        public int GetTotalTargetCount()
-        {
-            return spawnedTargets.Count;
-        }
-
-        public string BuildDebugGridAscii(Vector2Int? playerPosition = null)
-        {
-            if (stageData == null)
-                return string.Empty;
-
-            System.Text.StringBuilder builder = new System.Text.StringBuilder();
-
-            for (int y = stageData.height - 1; y >= 0; y--)
-            {
-                for (int x = 0; x < stageData.width; x++)
-                {
-                    Vector2Int position = new Vector2Int(x, y);
-
-                    if (playerPosition.HasValue && playerPosition.Value == position)
-                    {
-                        builder.Append('@');
-                        continue;
-                    }
-
-                    if (HasWall(position))
-                    {
-                        builder.Append('#');
-                        continue;
-                    }
-
-                    GridObject obj = GetObjectAt(position);
-                    if (obj != null)
-                    {
-                        builder.Append(GetDebugObjectSymbol(obj));
-                        continue;
-                    }
-
-                    if (HasTarget(position))
-                    {
-                        GridTarget target = GetTargetAt(position);
-                        builder.Append(target != null && target.IsActivated ? 't' : 'T');
-                        continue;
-                    }
-
-                    if (clearHoleActive && position == clearHolePosition)
-                    {
-                        builder.Append('O');
-                        continue;
-                    }
-
-                    builder.Append('.');
-                }
-
-                if (y > 0)
-                    builder.AppendLine();
-            }
-
-            return builder.ToString();
-        }
-
-        private char GetDebugObjectSymbol(GridObject obj)
-        {
-            if (obj == null)
-                return '?';
-
-            return obj.ObjectType switch
-            {
-                PuzzleObjectType.Mirror => 'M',
-                PuzzleObjectType.Prism => 'P',
-                PuzzleObjectType.Lens => 'A',
-                _ => '?'
-            };
-        }
-
         public bool AreAllTargetsActivated()
         {
             if (spawnedTargets.Count <= 0)
@@ -1303,6 +1295,82 @@ namespace Grid
             }
 
             return true;
+        }
+
+        public int GetTotalTargetCount()
+        {
+            int count = 0;
+            for (int i = 0; i < spawnedTargets.Count; i++)
+            {
+                if (spawnedTargets[i] != null)
+                    count++;
+            }
+
+            return count;
+        }
+
+        public int GetActivatedTargetCount()
+        {
+            int count = 0;
+            for (int i = 0; i < spawnedTargets.Count; i++)
+            {
+                if (spawnedTargets[i] != null && spawnedTargets[i].IsActivated)
+                    count++;
+            }
+
+            return count;
+        }
+
+        public string BuildDebugGridAscii(Vector2Int? playerPosition = null)
+        {
+            if (stageData == null || stageData.width <= 0 || stageData.height <= 0)
+                return "";
+
+            StringBuilder builder = new StringBuilder();
+            for (int y = stageData.height - 1; y >= 0; y--)
+            {
+                for (int x = 0; x < stageData.width; x++)
+                {
+                    Vector2Int position = new Vector2Int(x, y);
+                    builder.Append(GetDebugGridChar(position, playerPosition));
+                }
+
+                if (y > 0)
+                    builder.AppendLine();
+            }
+
+            return builder.ToString();
+        }
+
+        private char GetDebugGridChar(Vector2Int position, Vector2Int? playerPosition)
+        {
+            if (playerPosition.HasValue && playerPosition.Value == position)
+                return '@';
+
+            if (clearHoleActive && clearHolePosition == position)
+                return 'O';
+
+            GridObject gridObject = GetObjectAt(position);
+            if (gridObject != null)
+            {
+                return gridObject.ObjectType switch
+                {
+                    PuzzleObjectType.Mirror => 'M',
+                    PuzzleObjectType.Prism => 'P',
+                    PuzzleObjectType.Lens => 'A',
+                    PuzzleObjectType.Wall => '#',
+                    _ => 'o'
+                };
+            }
+
+            GridTarget target = GetTargetAt(position);
+            if (target != null)
+                return target.IsActivated ? 't' : 'T';
+
+            if (HasWall(position))
+                return '#';
+
+            return '.';
         }
 
         public void ClearStageSolvedLock()

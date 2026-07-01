@@ -17,10 +17,10 @@ using UnityEditor;
 
 namespace LevelEditor
 {
-    public class LevelEditorController : MonoBehaviour
+    public partial class LevelEditorController : MonoBehaviour
     {
         private enum ToolCategory { All, Position, Target, Wall, Mirror, Prism, Zone, Tile }
-        private enum ToolType { None, PlayerStart, ClearHole, TargetNormal, TargetSequence, TargetIntersection, Wall, Mirror, PrismSplitter, PrismColor, PrismRefraction, ZoneRotate, ZoneMirror, DistanceSensor, LensAmplifier, Eraser }
+        private enum ToolType { None, PlayerStart, PlayerRoute, ClearHole, TargetNormal, TargetSequence, TargetIntersection, Wall, Mirror, PrismSplitter, PrismColor, PrismRefraction, ZoneRotate, ZoneMirror, DistanceSensor, LensAmplifier, Eraser }
         private enum SelectedElementKind { None, PlayerStart, ClearHole, Wall, Target, Object, DistanceSensor, TransformZone }
         private enum TriggerEditMode { None, WaitingTarget, WaitingWallDestination, WaitingPrismDirection }
         private enum PlayerStartPreset { LeftTop, RightTop, CenterTop, LeftMiddle, RightMiddle, Center, LeftBottom, RightBottom, CenterBottom }
@@ -104,6 +104,7 @@ namespace LevelEditor
         private RectTransform loadPopup;
         private RectTransform savePopup;
         private RectTransform uploadPopup;
+        private RectTransform tutorialEditPopup;
         private RectTransform solutionOverwritePopup;
         private RectTransform batchSolutionPopup;
         private RectTransform helpPanel;
@@ -132,6 +133,11 @@ namespace LevelEditor
         private TMP_InputField runtimeLaserInput;
         private TMP_InputField runtimeMoveInput;
         private TMP_Dropdown runtimeBgmDropdown;
+        private TMP_Dropdown tutorialPageDropdown;
+        private TMP_InputField tutorialTitleInput;
+        private TMP_InputField tutorialDescriptionInput;
+        private TMP_Text tutorialDescriptionCounterText;
+        private TMP_Text tutorialPageInfoText;
         private TMP_InputField newStageNameInput;
         private TMP_InputField newWidthInput;
         private TMP_InputField newHeightInput;
@@ -152,6 +158,8 @@ namespace LevelEditor
         private GameObject ghostRoot;
         private GameObject rangePreviewRoot;
         private GameObject pendingArrowRoot;
+        private bool isDrawingPlayerRoute;
+        private Vector2Int playerRouteLastGridPosition;
         private Vector2Int hoverGridPosition;
         private bool hasHoverPosition;
         private bool isPanning;
@@ -187,6 +195,7 @@ namespace LevelEditor
         private Vector2Int dragLastGridPosition;
 
         private const int MaxUndoCount = 150;
+        private const int TutorialDescriptionCharacterLimit = 500;
         private readonly List<StageData> undoStack = new();
         private readonly List<StageData> redoStack = new();
         private string lastCommittedStageKey;
@@ -586,12 +595,6 @@ namespace LevelEditor
             }
         }
 
-        public void OpenExportDirectory()
-        {
-            Directory.CreateDirectory(ExportDirectory);
-            Application.OpenURL(ExportDirectory);
-        }
-
         private System.Collections.IEnumerator EditorTutorialRoutine()
         {
             yield return null;
@@ -745,6 +748,7 @@ namespace LevelEditor
         {
             tools.Clear();
             tools.Add(new ToolDefinition(ToolType.PlayerStart, ToolCategory.Position, "플레이어 위치 수정", "플레이어 시작 위치와 바라보는 방향을 수정한다.", true));
+            tools.Add(new ToolDefinition(ToolType.PlayerRoute, ToolCategory.Position, "플레이어 이동경로", "좌클릭 드래그로 플레이어 예상 이동 경로를 찍는다. 대각선이 아닌 꺾은선으로 표시된다."));
             tools.Add(new ToolDefinition(ToolType.ClearHole, ToolCategory.Position, "구멍 위치 수정", "스테이지 클리어 후 생성되는 구멍 위치를 수정한다."));
             tools.Add(new ToolDefinition(ToolType.TargetNormal, ToolCategory.Target, "도착지 / 색상 도착지", "Default면 일반 도착지, 색상을 고르면 해당 색상 레이저만 인정한다."));
             tools.Add(new ToolDefinition(ToolType.TargetSequence, ToolCategory.Target, "시퀸스 도착지", "정해진 순서대로 맞아야 하는 도착지다. 색상을 고르면 시퀸스+컬러 도착지가 된다."));
@@ -791,6 +795,7 @@ namespace LevelEditor
             BuildLoadPopup();
             BuildSavePopup();
             BuildUploadPopup();
+            BuildTutorialEditPopup();
             BuildSolutionOverwritePopup();
             BuildBatchSolutionPopup();
             RebuildPalette();
@@ -799,7 +804,7 @@ namespace LevelEditor
 
         private void BuildRuntimeSettingsPanel()
         {
-            runtimeSettingsPanel = CreatePanel("RuntimeSettingsPanel", canvasRect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -240f), new Vector2(420f, -12f), new Color(0.09f, 0.11f, 0.15f, 0.94f));
+            runtimeSettingsPanel = CreatePanel("RuntimeSettingsPanel", canvasRect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -330f), new Vector2(420f, -12f), new Color(0.09f, 0.11f, 0.15f, 0.94f));
             VerticalLayoutGroup layout = AddVerticalLayout(runtimeSettingsPanel, 8, 8, 8, 8, 6);
             layout.childForceExpandHeight = false;
             AddText(runtimeSettingsPanel, "런타임 설정", 24, TextAlignmentOptions.Left, Color.white);
@@ -809,12 +814,13 @@ namespace LevelEditor
             runtimeLaserInput = AddInputRow(runtimeSettingsPanel, "레이저 최대 길이", "8", value => ApplyRuntimeSettingInputs());
             runtimeMoveInput = AddInputRow(runtimeSettingsPanel, "이동 제한 행동 수", "0", value => ApplyRuntimeSettingInputs());
             runtimeBgmDropdown = AddDropdownRow(runtimeSettingsPanel, "레벨 BGM", BgmDisplayNames(), FindBgmIndex(editingStageData != null ? editingStageData.bgmEventPath : string.Empty), ApplyRuntimeBgmDropdown);
+            AddButton(runtimeSettingsPanel, "튜토리얼 수정", ShowTutorialEditPopup, 380f, 40f);
             gridInfoText = AddText(runtimeSettingsPanel, "", 18, TextAlignmentOptions.Left, new Color(0.85f, 0.9f, 1f, 1f));
         }
 
         private void BuildLeftPanel()
         {
-            leftPanel = CreatePanel("FunctionPanel", canvasRect, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(12f, 12f), new Vector2(420f, -258f), new Color(0.075f, 0.08f, 0.105f, 0.95f));
+            leftPanel = CreatePanel("FunctionPanel", canvasRect, new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(12f, 12f), new Vector2(420f, -348f), new Color(0.075f, 0.08f, 0.105f, 0.95f));
             VerticalLayoutGroup rootLayout = AddVerticalLayout(leftPanel, 8, 8, 8, 8, 8);
             rootLayout.childForceExpandHeight = false;
             AddText(leftPanel, "기능 패널", 28, TextAlignmentOptions.Left, Color.white);
@@ -943,10 +949,11 @@ namespace LevelEditor
             if (string.IsNullOrWhiteSpace(selectedSaveDirectory))
                 selectedSaveDirectory = StageFilePaths.MyCustomLevelsDirectory;
 
-            savePopup = CreateModalPanel("SavePopup", 700f, 430f, "저장하기");
+            savePopup = CreateModalPanel("SavePopup", 700f, 490f, "저장하기");
             saveDirectoryInput = AddInputRow(savePopup, "폴더 경로", selectedSaveDirectory, value => selectedSaveDirectory = value);
             saveFileNameInput = AddInputRow(savePopup, "파일 이름", selectedSaveFileName, value => selectedSaveFileName = value);
             AddButton(savePopup, "폴더 경로 선택", PickSaveFolder, 600f, 46f);
+            AddButton(savePopup, "현재 폴더 열기", OpenExportDirectory, 600f, 42f);
             AddButton(savePopup, "저장", ExportLevel, 600f, 52f);
             AddButton(savePopup, "취소", () => HideAllPopups(), 600f, 42f);
             currentFileText = AddText(savePopup, "", 16, TextAlignmentOptions.Left, new Color(0.75f, 0.8f, 0.9f, 1f));
@@ -1495,7 +1502,9 @@ namespace LevelEditor
             {
                 int solutionCount = editingStageData.solutionActions != null ? editingStageData.solutionActions.Count : 0;
                 string solutionText = solutionCount > 0 ? $"답안 {solutionCount} 행동" : "답안 없음";
-                gridInfoText.text = $"스테이지: {(string.IsNullOrWhiteSpace(editingStageData.stageName) ? "Custom Level" : editingStageData.stageName)}\n맵: {editingStageData.width} x {editingStageData.height} / 레이저 {(editingStageData.laserMaxDistance <= 0 ? "무제한" : editingStageData.laserMaxDistance + "칸")} / 이동 {(editingStageData.moveLimit <= 0 ? "무제한" : editingStageData.moveLimit + "회")} / BGM {BgmDisplayNames()[FindBgmIndex(editingStageData.bgmEventPath)]} / {solutionText}";
+                int tutorialCount = editingStageData.tutorialPages != null ? editingStageData.tutorialPages.Count : 0;
+                string tutorialText = tutorialCount > 0 ? $"튜토리얼 {tutorialCount}p" : "튜토리얼 없음";
+                gridInfoText.text = $"스테이지: {(string.IsNullOrWhiteSpace(editingStageData.stageName) ? "Custom Level" : editingStageData.stageName)}\n맵: {editingStageData.width} x {editingStageData.height} / 레이저 {(editingStageData.laserMaxDistance <= 0 ? "무제한" : editingStageData.laserMaxDistance + "칸")} / 이동 {(editingStageData.moveLimit <= 0 ? "무제한" : editingStageData.moveLimit + "회")} / BGM {BgmDisplayNames()[FindBgmIndex(editingStageData.bgmEventPath)]} / {tutorialText} / {solutionText}";
             }
 
             if (currentFileText != null)
@@ -1557,6 +1566,8 @@ namespace LevelEditor
             editingStageData.advancedTargets.RemoveAll(target => target == null || !editingStageData.IsInside(target.position));
             editingStageData.distanceSensors.RemoveAll(sensor => sensor == null || !editingStageData.IsInside(sensor.position));
             editingStageData.transformZones.RemoveAll(zone => zone == null || !editingStageData.IsInside(zone.center));
+            if (editingStageData.playerRoutePositions != null)
+                editingStageData.playerRoutePositions.RemoveAll(pos => !editingStageData.IsInside(pos));
             for (int i = 0; i < editingStageData.transformZones.Count; i++)
                 NormalizeZoneOffset(editingStageData.transformZones[i]);
         }
@@ -1824,6 +1835,12 @@ namespace LevelEditor
 
             if (selectedTool != null && selectedElementKind == SelectedElementKind.None)
             {
+                if (selectedTool.ToolType == ToolType.PlayerRoute)
+                {
+                    BeginPlayerRouteDraw(hoverGridPosition);
+                    return;
+                }
+
                 PlaceSelectedTool(hoverGridPosition);
                 return;
             }
@@ -1846,6 +1863,21 @@ namespace LevelEditor
             if (mouse.leftButton.wasReleasedThisFrame)
             {
                 isDraggingElement = false;
+                if (isDrawingPlayerRoute)
+                {
+                    isDrawingPlayerRoute = false;
+                    RebuildStageVisuals();
+                    RebuildSettingsPanel();
+                    RefreshHistoryBaseline();
+                    skipAutoHistoryThisFrame = true;
+                    SetStatus($"플레이어 이동경로 {GetPlayerRouteCount()}칸 기록 완료");
+                }
+                return;
+            }
+
+            if (isDrawingPlayerRoute)
+            {
+                UpdatePlayerRouteDraw();
                 return;
             }
 
@@ -1951,6 +1983,10 @@ namespace LevelEditor
                 case ToolType.PlayerStart:
                     editingStageData.playerStartPosition = position;
                     editingStageData.playerStartDirection = placementSettings.Direction;
+                    break;
+
+                case ToolType.PlayerRoute:
+                    BeginPlayerRouteDraw(position);
                     break;
 
                 case ToolType.ClearHole:
@@ -2221,6 +2257,8 @@ namespace LevelEditor
             editingStageData.objects.RemoveAll(obj => obj != null && obj.position == position);
             editingStageData.distanceSensors.RemoveAll(sensor => sensor != null && sensor.position == position);
             editingStageData.transformZones.RemoveAll(zone => zone != null && IsPositionInsideZone(position, zone));
+            if (editingStageData.playerRoutePositions != null)
+                editingStageData.playerRoutePositions.RemoveAll(pos => pos == position);
             RemoveTriggersPointingTo(position);
         }
 
@@ -2409,6 +2447,7 @@ namespace LevelEditor
             BuildObjectVisuals();
             BuildSensorVisuals();
             BuildPlayerStartVisual();
+            BuildPlayerRouteVisual();
             BuildClearHoleVisual();
             BuildTriggerLines();
             BuildPendingArrow();
@@ -2735,6 +2774,11 @@ namespace LevelEditor
                     CreateSpriteObject("PlayerGhost", parent, Vector3.zero, new Vector2(0.62f, 0.62f), new Color(0.2f, 0.65f, 1f, 0.65f), 30);
                     AddWorldLabel(parent, "P", Vector3.zero, 0.34f, Color.white, 32);
                     DrawDirectionArrow(parent, Vector3.zero, direction, Color.white, 33);
+                    break;
+
+                case ToolType.PlayerRoute:
+                    CreateSpriteObject("RouteGhost", parent, Vector3.zero, new Vector2(0.42f, 0.42f), new Color(0.25f, 1f, 0.7f, 0.72f), 30);
+                    AddWorldLabel(parent, "길", Vector3.zero, 0.2f, Color.black, 32);
                     break;
 
                 case ToolType.ClearHole:
@@ -3121,7 +3165,7 @@ namespace LevelEditor
 
         private void AutoTrackStageHistory()
         {
-            if (editingStageData == null || isApplyingHistory || skipAutoHistoryThisFrame || isDraggingElement)
+            if (editingStageData == null || isApplyingHistory || skipAutoHistoryThisFrame || isDraggingElement || isDrawingPlayerRoute)
             {
                 skipAutoHistoryThisFrame = false;
                 return;
@@ -3272,83 +3316,6 @@ namespace LevelEditor
         private void ReturnToTitle()
         {
             SceneFadeController.Instance.LoadScene("Title");
-        }
-
-        private void PickLoadFile()
-        {
-            if (!CanOpenNativeFileDialog())
-                return;
-
-            BeginNativeFileDialog();
-
-#if UNITY_EDITOR
-            string path = EditorUtility.OpenFilePanel("불러올 .tls 선택", StageFilePaths.MyCustomLevelsDirectory, "tls");
-            EndNativeFileDialog();
-
-            if (!string.IsNullOrWhiteSpace(path))
-            {
-                selectedLoadFilePath = path;
-                if (loadPathInput != null)
-                    loadPathInput.SetTextWithoutNotify(path);
-
-                ClearCurrentUiSelection();
-            }
-#else
-            EndNativeFileDialog();
-            SetStatus("빌드 환경에서는 경로 입력칸에 .tls 전체 경로를 직접 입력하세요.");
-#endif
-        }
-
-        private void PickSaveFolder()
-        {
-            if (!CanOpenNativeFileDialog())
-                return;
-
-            BeginNativeFileDialog();
-
-#if UNITY_EDITOR
-            string path = EditorUtility.OpenFolderPanel("저장할 폴더 선택", StageFilePaths.MyCustomLevelsDirectory, "");
-            EndNativeFileDialog();
-
-            if (!string.IsNullOrWhiteSpace(path))
-            {
-                selectedSaveDirectory = path;
-                if (saveDirectoryInput != null)
-                    saveDirectoryInput.SetTextWithoutNotify(path);
-
-                ClearCurrentUiSelection();
-            }
-#else
-            EndNativeFileDialog();
-            SetStatus("빌드 환경에서는 폴더 경로 입력칸에 직접 입력하세요.");
-#endif
-        }
-
-        private bool CanOpenNativeFileDialog()
-        {
-            if (isNativeFileDialogOpen)
-                return false;
-
-            return Time.unscaledTime - lastNativeFileDialogClosedTime > 0.25f;
-        }
-
-        private void BeginNativeFileDialog()
-        {
-            isNativeFileDialogOpen = true;
-            ClearCurrentUiSelection();
-        }
-
-        private void EndNativeFileDialog()
-        {
-            isNativeFileDialogOpen = false;
-            lastNativeFileDialogClosedTime = Time.unscaledTime;
-            ClearCurrentUiSelection();
-        }
-
-        private void ClearCurrentUiSelection()
-        {
-            if (EventSystem.current != null)
-                EventSystem.current.SetSelectedGameObject(null);
         }
 
         private void ShowMainPopup()
@@ -3517,6 +3484,7 @@ namespace LevelEditor
                 (newLevelPopup != null && newLevelPopup.gameObject.activeSelf) ||
                 (loadPopup != null && loadPopup.gameObject.activeSelf) ||
                 (savePopup != null && savePopup.gameObject.activeSelf) ||
+                (tutorialEditPopup != null && tutorialEditPopup.gameObject.activeSelf) ||
                 (uploadPopup != null && uploadPopup.gameObject.activeSelf) ||
                 (solutionOverwritePopup != null && solutionOverwritePopup.gameObject.activeSelf);
         }
@@ -3528,6 +3496,7 @@ namespace LevelEditor
             if (newLevelPopup != null) newLevelPopup.gameObject.SetActive(false);
             if (loadPopup != null) loadPopup.gameObject.SetActive(false);
             if (savePopup != null) savePopup.gameObject.SetActive(false);
+            if (tutorialEditPopup != null) tutorialEditPopup.gameObject.SetActive(false);
             if (uploadPopup != null) uploadPopup.gameObject.SetActive(false);
             if (solutionOverwritePopup != null) solutionOverwritePopup.gameObject.SetActive(false);
             if (batchSolutionPopup != null) batchSolutionPopup.gameObject.SetActive(false);

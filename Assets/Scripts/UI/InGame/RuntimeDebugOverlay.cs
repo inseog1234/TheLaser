@@ -31,6 +31,9 @@ namespace UI.InGame
         private RectTransform panel;
         private TMP_Text infoText;
         private TMP_Text gridText;
+        private TMP_Text simulationSpeedButtonText;
+        private TMP_Text gridToggleButtonText;
+        private RectTransform gridVisualRoot;
         private TMP_FontAsset font;
         private Sprite whiteSprite;
         private Coroutine refreshRoutine;
@@ -113,7 +116,9 @@ namespace UI.InGame
         private void BuildUI()
         {
             whiteSprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 1, 1), new Vector2(0.5f, 0.5f));
-            font = TMP_Settings.defaultFontAsset;
+            font = Resources.Load<TMP_FontAsset>("Font/TMP/PF스타더스트 3");
+            if (font == null)
+                font = TMP_Settings.defaultFontAsset;
 
             GameObject canvasObject = new GameObject("RuntimeDebugOverlayCanvas");
             canvasObject.transform.SetParent(transform, false);
@@ -138,15 +143,25 @@ namespace UI.InGame
             RectTransform buttonRow = CreateRect("ButtonRow", panel);
             SetTopLeft(buttonRow, new Vector2(18f, -430f), new Vector2(panelSize.x - 36f, 46f));
 
-            AddButton(buttonRow, "Next Stage", DebugNextStage, 0f, 138f);
-            AddButton(buttonRow, "Restart", DebugRestart, 148f, 120f);
-            AddButton(buttonRow, "Fire Laser", DebugFireLaser, 278f, 126f);
-            AddButton(buttonRow, "Show Grid", ToggleGridData, 414f, 150f);
+            AddButton(buttonRow, "다음 스테이지", DebugNextStage, 0f, 138f);
+            AddButton(buttonRow, "재시작", DebugRestart, 148f, 120f);
+            AddButton(buttonRow, "레이저 발사", DebugFireLaser, 278f, 126f);
 
-            gridText = CreateText("GridText", panel, "", 16f, FontStyles.Normal, TextAlignmentOptions.TopLeft);
-            SetTopLeft(gridText.rectTransform, new Vector2(18f, -488f), new Vector2(panelSize.x - 36f, 250f));
+            RectTransform simulationRow = CreateRect("SimulationRow", panel);
+            SetTopLeft(simulationRow, new Vector2(18f, -478f), new Vector2(panelSize.x - 36f, 46f));
+
+            AddButton(simulationRow, "클리어 시뮬", DebugSimulateSolution, 0f, 190f);
+            simulationSpeedButtonText = AddButton(simulationRow, "배속 x1", DebugCycleSimulationSpeed, 200f, 130f);
+            gridToggleButtonText = AddButton(simulationRow, "그리드 표시", ToggleGridData, 340f, 150f);
+
+            gridText = CreateText("GridLegendText", panel, "", 15f, FontStyles.Normal, TextAlignmentOptions.TopLeft);
+            SetTopLeft(gridText.rectTransform, new Vector2(18f, -536f), new Vector2(panelSize.x - 36f, 34f));
             gridText.font = font;
-            gridText.enableWordWrapping = false;
+            gridText.enableWordWrapping = true;
+
+            gridVisualRoot = CreatePanel("GridVisualRoot", panel, new Vector2(18f, -574f), new Vector2(panelSize.x - 36f, 164f), new Color(0.03f, 0.04f, 0.06f, 0.92f));
+            SetTopLeft(gridVisualRoot, new Vector2(18f, -574f), new Vector2(panelSize.x - 36f, 164f));
+            gridVisualRoot.gameObject.SetActive(false);
         }
 
         private void RefreshNow()
@@ -184,18 +199,143 @@ namespace UI.InGame
 
             infoText.text = builder.ToString();
 
-            if (gridText != null)
-                gridText.text = showGridData && gridManager != null ? BuildGridText() : "Grid Data: OFF";
+            RefreshGridVisual(stage);
+
+            RefreshDebugButtonLabels();
         }
 
-        private string BuildGridText()
+        private void RefreshDebugButtonLabels()
         {
-            Vector2Int? playerPosition = null;
-            if (playerController != null)
-                playerPosition = playerController.GridPosition;
+            if (simulationSpeedButtonText == null)
+                return;
 
-            string ascii = gridManager.BuildDebugGridAscii(playerPosition);
-            return "Grid Data  (# wall, @ player, M mirror, P prism, A amplifier, T target, t active)\n" + ascii;
+            int speed = stageFlowController != null ? stageFlowController.DebugSimulationSpeedMultiplier : 1;
+            simulationSpeedButtonText.text = $"배속 x{Mathf.Clamp(speed, 1, 5)}";
+
+            if (gridToggleButtonText != null)
+                gridToggleButtonText.text = showGridData ? "그리드 숨김" : "그리드 표시";
+        }
+
+        private void RefreshGridVisual(StageData stage)
+        {
+            if (gridText != null)
+                gridText.text = showGridData ? "그리드 데이터  @ 플레이어 / # 벽 / M 거울 / P 프리즘 / A 증폭기 / T 타깃 / O 구멍" : "그리드 데이터: 꺼짐";
+
+            if (gridVisualRoot == null)
+                return;
+
+            ClearChildren(gridVisualRoot);
+            gridVisualRoot.gameObject.SetActive(showGridData && stage != null && gridManager != null);
+
+            if (!gridVisualRoot.gameObject.activeSelf)
+                return;
+
+            int width = Mathf.Max(1, stage.width);
+            int height = Mathf.Max(1, stage.height);
+            float gap = 3f;
+            float rootWidth = gridVisualRoot.rect.width > 1f ? gridVisualRoot.rect.width : gridVisualRoot.sizeDelta.x;
+            float rootHeight = gridVisualRoot.rect.height > 1f ? gridVisualRoot.rect.height : gridVisualRoot.sizeDelta.y;
+            float availableWidth = Mathf.Max(1f, rootWidth - 12f);
+            float availableHeight = Mathf.Max(1f, rootHeight - 12f);
+            float cellSize = Mathf.Floor(Mathf.Min((availableWidth - gap * (width - 1)) / width, (availableHeight - gap * (height - 1)) / height));
+            cellSize = Mathf.Clamp(cellSize, 12f, 34f);
+            float gridWidth = width * cellSize + (width - 1) * gap;
+            float gridHeight = height * cellSize + (height - 1) * gap;
+            Vector2 origin = new Vector2((availableWidth - gridWidth) * 0.5f + 6f, -((availableHeight - gridHeight) * 0.5f + 6f));
+
+            for (int y = height - 1; y >= 0; y--)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    Vector2Int position = new Vector2Int(x, y);
+                    int visualRow = height - 1 - y;
+                    Vector2 anchoredPosition = origin + new Vector2(x * (cellSize + gap), -visualRow * (cellSize + gap));
+                    CreateGridCellVisual(position, anchoredPosition, cellSize);
+                }
+            }
+        }
+
+        private void CreateGridCellVisual(Vector2Int position, Vector2 anchoredPosition, float cellSize)
+        {
+            char symbol = ResolveGridCellSymbol(position);
+            Color color = ResolveGridCellColor(symbol);
+            RectTransform cell = CreatePanel($"GridCell_{position.x}_{position.y}", gridVisualRoot, anchoredPosition, new Vector2(cellSize, cellSize), color);
+            SetTopLeft(cell, anchoredPosition, new Vector2(cellSize, cellSize));
+
+            TMP_Text label = CreateText("Label", cell, symbol == '.' ? "" : symbol.ToString(), Mathf.Clamp(cellSize * 0.52f, 10f, 18f), FontStyles.Bold, TextAlignmentOptions.Center);
+            label.rectTransform.anchorMin = Vector2.zero;
+            label.rectTransform.anchorMax = Vector2.one;
+            label.rectTransform.offsetMin = Vector2.zero;
+            label.rectTransform.offsetMax = Vector2.zero;
+            label.color = ResolveGridCellTextColor(symbol);
+        }
+
+        private char ResolveGridCellSymbol(Vector2Int position)
+        {
+            if (playerController != null && playerController.GridPosition == position)
+                return '@';
+
+            if (gridManager != null && gridManager.IsClearHoleActive && gridManager.ClearHolePosition == position)
+                return 'O';
+
+            GridObject gridObject = gridManager != null ? gridManager.GetObjectAt(position) : null;
+            if (gridObject != null)
+            {
+                return gridObject.ObjectType switch
+                {
+                    PuzzleObjectType.Mirror => 'M',
+                    PuzzleObjectType.Prism => 'P',
+                    PuzzleObjectType.Lens => 'A',
+                    PuzzleObjectType.Wall => '#',
+                    _ => 'o'
+                };
+            }
+
+            GridTarget target = gridManager != null ? gridManager.GetTargetAt(position) : null;
+            if (target != null)
+                return target.IsActivated ? 't' : 'T';
+
+            if (gridManager != null && gridManager.HasWall(position))
+                return '#';
+
+            return '.';
+        }
+
+        private Color ResolveGridCellColor(char symbol)
+        {
+            return symbol switch
+            {
+                '@' => new Color(0.2f, 0.58f, 1f, 0.95f),
+                '#' => new Color(0.28f, 0.3f, 0.36f, 0.98f),
+                'M' => new Color(0.68f, 0.82f, 1f, 0.95f),
+                'P' => new Color(0.64f, 0.45f, 1f, 0.95f),
+                'A' => new Color(1f, 0.78f, 0.26f, 0.95f),
+                'T' => new Color(0.28f, 0.9f, 0.5f, 0.92f),
+                't' => new Color(0.1f, 1f, 0.25f, 0.98f),
+                'O' => new Color(0.02f, 0.02f, 0.03f, 0.98f),
+                'o' => new Color(0.75f, 0.78f, 0.85f, 0.95f),
+                _ => new Color(0.1f, 0.12f, 0.16f, 0.95f)
+            };
+        }
+
+        private Color ResolveGridCellTextColor(char symbol)
+        {
+            return symbol switch
+            {
+                '#' => Color.white,
+                'O' => Color.white,
+                '.' => new Color(0.45f, 0.48f, 0.55f, 1f),
+                _ => Color.black
+            };
+        }
+
+        private void ClearChildren(Transform parent)
+        {
+            if (parent == null)
+                return;
+
+            for (int i = parent.childCount - 1; i >= 0; i--)
+                Destroy(parent.GetChild(i).gameObject);
         }
 
         private string FormatStageName(StageData stage)
@@ -264,6 +404,28 @@ namespace UI.InGame
                 laserShooter.ShootFromPlayer();
         }
 
+        private void DebugSimulateSolution()
+        {
+            if (stageFlowController == null)
+                stageFlowController = FindFirstObjectByType<InGameStageFlowController>();
+
+            if (stageFlowController != null)
+                stageFlowController.DebugToggleSolutionSimulation();
+
+            RefreshNow();
+        }
+
+        private void DebugCycleSimulationSpeed()
+        {
+            if (stageFlowController == null)
+                stageFlowController = FindFirstObjectByType<InGameStageFlowController>();
+
+            if (stageFlowController != null)
+                stageFlowController.DebugCycleSimulationSpeed();
+
+            RefreshNow();
+        }
+
         private void ToggleGridData()
         {
             showGridData = !showGridData;
@@ -295,7 +457,7 @@ namespace UI.InGame
             return label;
         }
 
-        private void AddButton(RectTransform parent, string label, UnityEngine.Events.UnityAction action, float x, float width)
+        private TMP_Text AddButton(RectTransform parent, string label, UnityEngine.Events.UnityAction action, float x, float width)
         {
             RectTransform rect = CreatePanel(label, parent, new Vector2(x, 0f), new Vector2(width, 42f), new Color(0.12f, 0.16f, 0.24f, 0.94f));
             rect.anchorMin = new Vector2(0f, 0.5f);
@@ -310,6 +472,7 @@ namespace UI.InGame
             text.rectTransform.anchorMax = Vector2.one;
             text.rectTransform.offsetMin = Vector2.zero;
             text.rectTransform.offsetMax = Vector2.zero;
+            return text;
         }
 
         private RectTransform CreateRect(string name, Transform parent)

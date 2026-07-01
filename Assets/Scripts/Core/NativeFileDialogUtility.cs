@@ -34,6 +34,18 @@ namespace Core
 #endif
         }
 
+        public static string OpenFolderPanel(string title, string initialDirectory)
+        {
+#if UNITY_EDITOR && !UNITY_EDITOR_WIN
+            return UnityEditor.EditorUtility.OpenFolderPanel(title, initialDirectory, "");
+#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            return OpenWindowsFolderPanel(title, initialDirectory);
+#else
+            Debug.LogWarning("[NativeFileDialogUtility] 현재 플랫폼에서는 네이티브 폴더 선택창을 지원하지 않습니다.");
+            return string.Empty;
+#endif
+        }
+
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         private struct OpenFileName
@@ -63,8 +75,30 @@ namespace Core
             public int FlagsEx;
         }
 
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct BrowseInfo
+        {
+            public IntPtr hwndOwner;
+            public IntPtr pidlRoot;
+            public IntPtr pszDisplayName;
+            public string lpszTitle;
+            public uint ulFlags;
+            public IntPtr lpfn;
+            public IntPtr lParam;
+            public int iImage;
+        }
+
         [DllImport("Comdlg32.dll", EntryPoint = "GetOpenFileNameW", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool GetOpenFileName(ref OpenFileName ofn);
+
+        [DllImport("Shell32.dll", EntryPoint = "SHBrowseForFolderW", CharSet = CharSet.Unicode)]
+        private static extern IntPtr SHBrowseForFolder(ref BrowseInfo browseInfo);
+
+        [DllImport("Shell32.dll", EntryPoint = "SHGetPathFromIDListW", CharSet = CharSet.Unicode)]
+        private static extern bool SHGetPathFromIDList(IntPtr pidl, IntPtr pszPath);
+
+        [DllImport("Ole32.dll")]
+        private static extern void CoTaskMemFree(IntPtr pv);
 
         private const int OFN_READONLY = 0x00000001;
         private const int OFN_OVERWRITEPROMPT = 0x00000002;
@@ -92,6 +126,9 @@ namespace Core
         private const int OFN_ENABLESIZING = 0x00800000;
         private const int OFN_DONTADDTORECENT = 0x02000000;
         private const int OFN_FORCESHOWHIDDEN = 0x10000000;
+        private const uint BIF_RETURNONLYFSDIRS = 0x00000001;
+        private const uint BIF_NEWDIALOGSTYLE = 0x00000040;
+        private const int MAX_PATH = 260;
 
         private static string[] OpenWindowsFilePanel(string title, string initialDirectory, bool allowMultiSelect)
         {
@@ -149,6 +186,57 @@ namespace Core
 
                 if (fileTitleBuffer != IntPtr.Zero)
                     Marshal.FreeHGlobal(fileTitleBuffer);
+            }
+        }
+
+        private static string OpenWindowsFolderPanel(string title, string initialDirectory)
+        {
+            IntPtr displayNameBuffer = IntPtr.Zero;
+            IntPtr pathBuffer = IntPtr.Zero;
+            IntPtr pidl = IntPtr.Zero;
+
+            try
+            {
+                displayNameBuffer = Marshal.AllocHGlobal(MAX_PATH * sizeof(char));
+                pathBuffer = Marshal.AllocHGlobal(MAX_PATH * sizeof(char));
+                ZeroMemory(displayNameBuffer, MAX_PATH * sizeof(char));
+                ZeroMemory(pathBuffer, MAX_PATH * sizeof(char));
+
+                BrowseInfo browseInfo = new BrowseInfo
+                {
+                    hwndOwner = IntPtr.Zero,
+                    pidlRoot = IntPtr.Zero,
+                    pszDisplayName = displayNameBuffer,
+                    lpszTitle = string.IsNullOrWhiteSpace(title) ? "폴더 선택" : title,
+                    ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE,
+                    lpfn = IntPtr.Zero,
+                    lParam = IntPtr.Zero,
+                    iImage = 0
+                };
+
+                pidl = SHBrowseForFolder(ref browseInfo);
+                if (pidl == IntPtr.Zero)
+                    return string.Empty;
+
+                if (!SHGetPathFromIDList(pidl, pathBuffer))
+                    return string.Empty;
+
+                string path = Marshal.PtrToStringUni(pathBuffer);
+                if (!string.IsNullOrWhiteSpace(path))
+                    return path;
+
+                return Directory.Exists(initialDirectory) ? initialDirectory : string.Empty;
+            }
+            finally
+            {
+                if (pidl != IntPtr.Zero)
+                    CoTaskMemFree(pidl);
+
+                if (displayNameBuffer != IntPtr.Zero)
+                    Marshal.FreeHGlobal(displayNameBuffer);
+
+                if (pathBuffer != IntPtr.Zero)
+                    Marshal.FreeHGlobal(pathBuffer);
             }
         }
 

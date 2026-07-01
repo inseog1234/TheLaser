@@ -8,7 +8,7 @@ namespace Core
     public static class StageBinarySerializer
     {
         private const string Magic = "TLS_STAGE";
-        private const int Version = 6;
+        private const int Version = 7;
 
         public static void Save(StageData stageData, string path)
         {
@@ -42,6 +42,7 @@ namespace Core
             writer.Write(stageData.moveLimit);
             WriteVector2Int(writer, stageData.playerStartPosition);
             writer.Write((int)stageData.playerStartDirection);
+            WriteVector2IntList(writer, stageData.playerRoutePositions);
 
             WriteVector2IntList(writer, stageData.wallPositions);
             WriteVector2IntList(writer, stageData.targetPositions);
@@ -116,6 +117,7 @@ namespace Core
             stageData.moveLimit = reader.ReadInt32();
             stageData.playerStartPosition = ReadVector2Int(reader);
             stageData.playerStartDirection = (GridDirection)reader.ReadInt32();
+            stageData.playerRoutePositions = version >= 7 ? ReadVector2IntList(reader) : new List<Vector2Int>();
             stageData.wallPositions = ReadVector2IntList(reader);
             stageData.targetPositions = ReadVector2IntList(reader);
             stageData.advancedTargets = ReadTargetList(reader, version);
